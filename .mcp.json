@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sosyalpilot": {
+      "command": "npm",
+      "args": ["run", "mcp", "--prefix", "server", "--silent"],
+      "env": {
+        "SOSYALPILOT_API_URL": "http://localhost:4100",
+        "SOSYALPILOT_API_KEY": "${SOSYALPILOT_API_KEY}"
+      }
+    }
+  }
+}
