@@ -25,30 +25,51 @@
 
 ## Hızlı başlangıç
 
-```bash
+En kolayı: **`baslat.cmd`** dosyasına çift tıkla. Bağımlılıkları kurar, `.env` yoksa oluşturur, sunucuyu başlatır ve tarayıcıyı açar.
+
+Elle çalıştırmak istersen — her komutu **ayrı satıra** yaz:
+
+```powershell
 cd "C:\Users\Mehmet Em\Desktop\Projeler\sosyalpilot"
+```
+```powershell
 npm install
 ```
-
-`.env` dosyasını doldur (bkz. [docs/KURULUM.md](docs/KURULUM.md)), sonra:
-
-```bash
+```powershell
 npm run dev
 ```
+
+> **Windows PowerShell 5.1 uyarısı:** `cd ... && npm run dev` gibi `&&` ile birleştirilmiş komutlar bu sürümde **çalışmaz**, `The token '&&' is not a valid statement separator` hatası verir. Komutları ayrı satırlarda çalıştır, ya da birleştirmen gerekiyorsa `;` kullan.
+
+`.env` dosyasını doldurman gerekiyor (bkz. [docs/KURULUM.md](docs/KURULUM.md)) — ama kanal bağlamadan önce panele girip gezebilirsin.
 
 - Panel: http://localhost:5173
 - API: http://localhost:4100
 
 İlk açılışta yönetici hesabını oluşturursun. Ardından **Kanallar** sayfasından hesapları bağla.
 
-Üretim için:
+Üretim için (tek port 4100'den hem panel hem API):
 
-```bash
+```powershell
+.\baslat.ps1 -Uretim
+```
+
+ya da elle:
+
+```powershell
 npm run build
+```
+```powershell
 npm start
 ```
 
-Tek port (4100) üzerinden hem panel hem API servis edilir.
+### Durdurma
+
+Çalıştığı terminalde **Ctrl+C**. Terminali kapattıysan ve port hâlâ meşgulse:
+
+```powershell
+Get-NetTCPConnection -LocalPort 4100,5173 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
+```
 
 ---
 
