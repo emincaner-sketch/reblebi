@@ -7,6 +7,7 @@ type Row = Record<string, unknown>;
 function rowToConversation(r: Row): Conversation {
   return {
     id: r.id as string,
+    orgId: r.org_id as string,
     channelId: r.channel_id as string,
     externalId: r.external_id as string,
     participantId: r.participant_id as string,
@@ -18,6 +19,7 @@ function rowToConversation(r: Row): Conversation {
     mode: r.mode as ConversationMode,
     status: r.status as Conversation["status"],
     needsAttention: Number(r.needs_attention ?? 0),
+    assignedTo: (r.assigned_to as string) ?? null,
     metadata: parseJson<Record<string, unknown>>(r.metadata, {}),
     createdAt: r.created_at as string,
   };
@@ -40,6 +42,7 @@ function rowToMessage(r: Row): Message {
 }
 
 export interface InboundMessageInput {
+  orgId: string;
   channelId: string;
   conversationExternalId: string;
   participantId: string;
@@ -53,9 +56,12 @@ export interface InboundMessageInput {
 }
 
 export const inboxRepo = {
-  listConversations(opts: { channelId?: string; status?: "open" | "closed"; limit?: number; onlyAttention?: boolean } = {}): Conversation[] {
-    const where: string[] = [];
-    const params: Array<string | number> = [];
+  listConversations(
+    orgId: string,
+    opts: { channelId?: string; status?: "open" | "closed"; limit?: number; onlyAttention?: boolean; assignedTo?: string; q?: string } = {},
+  ): Conversation[] {
+    const where: string[] = ["org_id = ?"];
+    const params: Array<string | number> = [orgId];
     if (opts.channelId) {
       where.push("channel_id = ?");
       params.push(opts.channelId);
@@ -65,27 +71,36 @@ export const inboxRepo = {
       params.push(opts.status);
     }
     if (opts.onlyAttention) where.push("needs_attention = 1");
-    const sql =
-      "SELECT * FROM conversations" +
-      (where.length ? " WHERE " + where.join(" AND ") : "") +
-      " ORDER BY last_message_at DESC LIMIT ?";
-    params.push(opts.limit ?? 100);
-    return (getDb().prepare(sql).all(...params) as Row[]).map(rowToConversation);
+    if (opts.assignedTo) {
+      where.push("assigned_to = ?");
+      params.push(opts.assignedTo);
+    }
+    if (opts.q) {
+      where.push("(lower(COALESCE(participant_name,'')) LIKE ? OR lower(COALESCE(last_message_preview,'')) LIKE ?)");
+      params.push(`%${opts.q.toLowerCase()}%`, `%${opts.q.toLowerCase()}%`);
+    }
+    params.push(Math.min(opts.limit ?? 100, 500));
+    return (getDb().prepare(`SELECT * FROM conversations WHERE ${where.join(" AND ")} ORDER BY last_message_at DESC LIMIT ?`).all(...params) as Row[]).map(
+      rowToConversation,
+    );
   },
-  getConversation(id: string): Conversation | null {
+  getConversation(orgId: string, id: string): Conversation | null {
+    const r = getDb().prepare("SELECT * FROM conversations WHERE id = ? AND org_id = ?").get(id, orgId) as Row | undefined;
+    return r ? rowToConversation(r) : null;
+  },
+  getConversationById(id: string): Conversation | null {
     const r = getDb().prepare("SELECT * FROM conversations WHERE id = ?").get(id) as Row | undefined;
     return r ? rowToConversation(r) : null;
   },
   findConversation(channelId: string, externalId: string): Conversation | null {
-    const r = getDb()
-      .prepare("SELECT * FROM conversations WHERE channel_id = ? AND external_id = ?")
-      .get(channelId, externalId) as Row | undefined;
+    const r = getDb().prepare("SELECT * FROM conversations WHERE channel_id = ? AND external_id = ?").get(channelId, externalId) as Row | undefined;
     return r ? rowToConversation(r) : null;
   },
-  messages(conversationId: string, limit = 200): Message[] {
+  messages(conversationId: string, limit = 300): Message[] {
+    // Son N mesaj, kronolojik sırada
     return (
       getDb()
-        .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ?")
+        .prepare("SELECT * FROM (SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at ASC")
         .all(conversationId, limit) as Row[]
     ).map(rowToMessage);
   },
@@ -95,12 +110,14 @@ export const inboxRepo = {
       .get(conversationId, excludeMessageId) as Row;
     return Number(r.c ?? 0) > 0;
   },
-  /** Gelen mesajı kaydeder; konuşma yoksa açar. Aynı external id tekrar gelirse null döner (webhook tekrarları). */
+  /** Gelen mesajı kaydeder; konuşma yoksa açar. Aynı mesaj tekrar gelirse null döner (webhook tekrarları). */
   recordInbound(input: InboundMessageInput): { conversation: Conversation; message: Message; created: boolean } | null {
     const db = getDb();
     const now = input.receivedAt ?? nowIso();
     if (input.externalMessageId) {
-      const dup = db.prepare("SELECT id FROM messages WHERE external_id = ?").get(input.externalMessageId);
+      const dup = db
+        .prepare("SELECT m.id FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.channel_id = ? AND m.external_id = ?")
+        .get(input.channelId, input.externalMessageId);
       if (dup) return null;
     }
     let conv = this.findConversation(input.channelId, input.conversationExternalId);
@@ -108,11 +125,12 @@ export const inboxRepo = {
     if (!conv) {
       const id = randomId("conv");
       db.prepare(
-        `INSERT INTO conversations (id, channel_id, external_id, participant_id, participant_name, participant_avatar,
+        `INSERT INTO conversations (id, org_id, channel_id, external_id, participant_id, participant_name, participant_avatar,
          last_message_at, last_message_preview, unread, mode, status, needs_attention, metadata, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'auto', 'open', 0, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'auto', 'open', 0, ?, ?)`,
       ).run(
         id,
+        input.orgId,
         input.channelId,
         input.conversationExternalId,
         input.participantId,
@@ -123,14 +141,14 @@ export const inboxRepo = {
         JSON.stringify(input.metadata ?? {}),
         now,
       );
-      conv = this.getConversation(id)!;
+      conv = this.getConversationById(id)!;
       created = true;
     } else {
       db.prepare(
         `UPDATE conversations SET last_message_at=?, last_message_preview=?, unread=unread+1, status='open',
          participant_name=COALESCE(?, participant_name), participant_avatar=COALESCE(?, participant_avatar) WHERE id=?`,
       ).run(now, input.text.slice(0, 140), input.participantName ?? null, input.participantAvatar ?? null, conv.id);
-      conv = this.getConversation(conv.id)!;
+      conv = this.getConversationById(conv.id)!;
     }
     const mid = randomId("msg");
     db.prepare(
@@ -153,30 +171,27 @@ export const inboxRepo = {
       `INSERT INTO messages (id, conversation_id, direction, external_id, text, attachments, sent_by, rule_id, status, error, created_at)
        VALUES (?, ?, 'out', ?, ?, '[]', ?, ?, ?, ?, ?)`,
     ).run(id, conversationId, opts.externalId ?? null, text, sentBy, opts.ruleId ?? null, opts.status ?? "sent", opts.error ?? null, now);
-    db.prepare("UPDATE conversations SET last_message_at=?, last_message_preview=? WHERE id=?").run(
-      now,
-      ("↩ " + text).slice(0, 140),
-      conversationId,
-    );
+    db.prepare("UPDATE conversations SET last_message_at=?, last_message_preview=? WHERE id=?").run(now, ("↩ " + text).slice(0, 140), conversationId);
     return rowToMessage(db.prepare("SELECT * FROM messages WHERE id = ?").get(id) as Row);
   },
-  markRead(conversationId: string): void {
-    getDb().prepare("UPDATE conversations SET unread=0, needs_attention=0 WHERE id=?").run(conversationId);
+  markRead(id: string): void {
+    getDb().prepare("UPDATE conversations SET unread=0 WHERE id=?").run(id);
   },
-  setMode(conversationId: string, mode: ConversationMode): void {
-    getDb().prepare("UPDATE conversations SET mode=? WHERE id=?").run(mode, conversationId);
+  setMode(id: string, mode: ConversationMode): void {
+    getDb().prepare("UPDATE conversations SET mode=? WHERE id=?").run(mode, id);
   },
-  setStatus(conversationId: string, status: "open" | "closed"): void {
-    getDb().prepare("UPDATE conversations SET status=? WHERE id=?").run(status, conversationId);
+  setStatus(id: string, status: "open" | "closed"): void {
+    getDb().prepare("UPDATE conversations SET status=?, needs_attention = CASE WHEN ? = 'closed' THEN 0 ELSE needs_attention END WHERE id=?").run(status, status, id);
   },
-  flagAttention(conversationId: string, flag: boolean): void {
-    getDb().prepare("UPDATE conversations SET needs_attention=? WHERE id=?").run(flag ? 1 : 0, conversationId);
+  assign(id: string, userId: string | null): void {
+    getDb().prepare("UPDATE conversations SET assigned_to=? WHERE id=?").run(userId, id);
+  },
+  flagAttention(id: string, flag: boolean): void {
+    getDb().prepare("UPDATE conversations SET needs_attention=? WHERE id=?").run(flag ? 1 : 0, id);
   },
   ruleHitRecently(ruleId: string, conversationId: string, cooldownMinutes: number): boolean {
     if (cooldownMinutes <= 0) return false;
-    const r = getDb()
-      .prepare("SELECT last_hit_at FROM rule_hits WHERE rule_id=? AND conversation_id=?")
-      .get(ruleId, conversationId) as Row | undefined;
+    const r = getDb().prepare("SELECT last_hit_at FROM rule_hits WHERE rule_id=? AND conversation_id=?").get(ruleId, conversationId) as Row | undefined;
     if (!r) return false;
     return Date.now() - new Date(r.last_hit_at as string).getTime() < cooldownMinutes * 60_000;
   },
@@ -187,16 +202,22 @@ export const inboxRepo = {
       )
       .run(ruleId, conversationId, nowIso());
   },
-  stats(): { open: number; unread: number; attention: number; inLast7: number; autoRepliedLast7: number } {
+  stats(orgId: string): { open: number; unread: number; attention: number; inLast7: number; autoRepliedLast7: number } {
     const db = getDb();
     const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
-    const n = (sql: string, ...p: string[]) => Number((db.prepare(sql).get(...p) as Row).c ?? 0);
+    const n = (sql: string, ...p: string[]) => Number((db.prepare(sql).get(orgId, ...p) as Row).c ?? 0);
     return {
-      open: n("SELECT COUNT(*) c FROM conversations WHERE status='open'"),
-      unread: n("SELECT COALESCE(SUM(unread),0) c FROM conversations"),
-      attention: n("SELECT COUNT(*) c FROM conversations WHERE needs_attention=1"),
-      inLast7: n("SELECT COUNT(*) c FROM messages WHERE direction='in' AND created_at >= ?", weekAgo),
-      autoRepliedLast7: n("SELECT COUNT(*) c FROM messages WHERE direction='out' AND sent_by IN ('rule','ai') AND created_at >= ?", weekAgo),
+      open: n("SELECT COUNT(*) c FROM conversations WHERE org_id = ? AND status='open'"),
+      unread: n("SELECT COALESCE(SUM(unread),0) c FROM conversations WHERE org_id = ?"),
+      attention: n("SELECT COUNT(*) c FROM conversations WHERE org_id = ? AND needs_attention=1 AND status='open'"),
+      inLast7: n(
+        "SELECT COUNT(*) c FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.org_id = ? AND m.direction='in' AND m.created_at >= ?",
+        weekAgo,
+      ),
+      autoRepliedLast7: n(
+        "SELECT COUNT(*) c FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.org_id = ? AND m.direction='out' AND m.sent_by IN ('rule','ai') AND m.created_at >= ?",
+        weekAgo,
+      ),
     };
   },
 };

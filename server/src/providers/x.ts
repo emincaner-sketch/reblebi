@@ -73,6 +73,8 @@ export const xProvider: Provider = {
     inbound: "poll",
     analytics: true,
     maxTextLength: 280,
+    comments: true,
+    maxMedia: 4,
     mediaNote: "En fazla 4 görsel ya da 1 video. DM okuma/yazma için ücretli API katmanı gerekir.",
   },
   settingFields: [
@@ -215,6 +217,30 @@ export const xProvider: Provider = {
     });
     const pm = me.data.public_metrics ?? {};
     return { followers: Number(pm.followers_count ?? 0), following: Number(pm.following_count ?? 0), posts: Number(pm.tweet_count ?? 0) };
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    const r = await http<{ data: { id: string } }>(`${API}/tweets`, {
+      method: "POST",
+      headers: bearer(channel.accessToken),
+      json: { text, reply: { in_reply_to_tweet_id: replyToExternalId ?? parentExternalId } },
+    });
+    return { externalId: r.data.id };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const r = await http<{ data?: { public_metrics?: Record<string, number> } }>(`${API}/tweets/${externalId}`, {
+      headers: bearer(channel.accessToken),
+      query: { "tweet.fields": "public_metrics" },
+      retries: 0,
+    });
+    const pm = r.data?.public_metrics ?? {};
+    return {
+      likes: Number(pm.like_count ?? 0),
+      comments: Number(pm.reply_count ?? 0),
+      shares: Number(pm.retweet_count ?? 0) + Number(pm.quote_count ?? 0),
+      views: Number(pm.impression_count ?? 0),
+    };
   },
 
   async healthCheck(channel: Channel) {

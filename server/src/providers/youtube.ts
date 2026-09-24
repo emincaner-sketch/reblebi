@@ -25,6 +25,10 @@ export const youtubeProvider: Provider = {
     inbound: "none",
     analytics: true,
     maxTextLength: 5000,
+    comments: true,
+    maxMedia: 1,
+    requiresMedia: true,
+    requiresVideo: true,
     mediaNote: "1 video dosyası (MP4/MOV). Shorts için dikey video + başlıkta #Shorts. Metin = açıklama; başlık ayarlardan girilir.",
   },
   settingFields: [
@@ -130,6 +134,34 @@ export const youtubeProvider: Provider = {
     );
     const s = r.items?.[0]?.statistics ?? {};
     return { followers: Number(s.subscriberCount ?? 0), views: Number(s.viewCount ?? 0), posts: Number(s.videoCount ?? 0) };
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    if (replyToExternalId) {
+      const r = await http<{ id: string }>("https://www.googleapis.com/youtube/v3/comments", {
+        method: "POST",
+        headers: bearer(channel.accessToken),
+        query: { part: "snippet" },
+        json: { snippet: { parentId: replyToExternalId, textOriginal: text } },
+      });
+      return { externalId: r.id };
+    }
+    const r = await http<{ id: string; snippet?: { topLevelComment?: { id: string } } }>("https://www.googleapis.com/youtube/v3/commentThreads", {
+      method: "POST",
+      headers: bearer(channel.accessToken),
+      query: { part: "snippet" },
+      json: { snippet: { videoId: parentExternalId, topLevelComment: { snippet: { textOriginal: text } } } },
+    });
+    return { externalId: r.snippet?.topLevelComment?.id ?? r.id };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const r = await http<{ items?: Array<{ statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }> }>(
+      "https://www.googleapis.com/youtube/v3/videos",
+      { headers: bearer(channel.accessToken), query: { part: "statistics", id: externalId }, retries: 0 },
+    );
+    const s = r.items?.[0]?.statistics ?? {};
+    return { views: Number(s.viewCount ?? 0), likes: Number(s.likeCount ?? 0), comments: Number(s.commentCount ?? 0) };
   },
 
   async healthCheck(channel: Channel) {

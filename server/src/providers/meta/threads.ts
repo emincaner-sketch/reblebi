@@ -65,6 +65,8 @@ export const threadsProvider: Provider = {
     inbound: "none",
     analytics: true,
     maxTextLength: 500,
+    comments: true,
+    maxMedia: 20,
     mediaNote: "En fazla 500 karakter. Görsel/video herkese açık URL ile çekilir. Zincir için parçaları --- ile ayır.",
   },
   settingFields: [
@@ -167,6 +169,26 @@ export const threadsProvider: Provider = {
       if (typeof v === "number") metrics[d.name === "followers_count" ? "followers" : d.name] = v;
     }
     return metrics;
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    const cid = await container(channel.externalId, channel.accessToken, { media_type: "TEXT", text, reply_to_id: replyToExternalId ?? parentExternalId });
+    const r = await publishOne(channel.externalId, channel.accessToken, cid);
+    return { externalId: r.externalId };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const r = await graph<{ data?: Array<{ name: string; values?: Array<{ value: number }>; total_value?: { value: number } }> }>(
+      `${TH}/${externalId}/insights`,
+      channel.accessToken,
+      { params: { metric: "views,likes,replies,reposts,quotes" } },
+    );
+    const m: Record<string, number> = {};
+    for (const d of r.data ?? []) {
+      const v = d.total_value?.value ?? d.values?.[0]?.value;
+      if (typeof v === "number") m[d.name === "replies" ? "comments" : d.name] = v;
+    }
+    return m;
   },
 
   async healthCheck(channel: Channel) {

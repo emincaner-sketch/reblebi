@@ -1,84 +1,75 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { config } from "../core/config.js";
+import { AppError } from "../core/i18n.js";
 import { loadBrandContext } from "../core/brand.js";
-import { settingsRepo } from "../core/repos/misc.js";
-import type { Message, PostKind, ProviderId } from "../core/types.js";
+import { orgSettingsRepo, orgsRepo } from "../core/repos/orgs.js";
+import type { Locale, Message, PostKind, ProviderId } from "../core/types.js";
+import { consumeAiQuota } from "../services/limits.js";
+import { aiJson, aiText, resolveAiConfig, type AiConfig } from "./providers.js";
 
-let client: Anthropic | null = null;
-
-/** AI yalnızca .env içindeki ANTHROPIC_API_KEY ile açılır (ortamdaki geçici tokenlara güvenilmez) */
-export function isAiEnabled(): boolean {
-  return Boolean(config.ai.apiKey);
-}
-
-function getClient(): Anthropic {
-  if (!isAiEnabled()) throw new Error("ANTHROPIC_API_KEY tanımlı değil; AI özellikleri kapalı");
-  if (!client) client = new Anthropic({ apiKey: config.ai.apiKey, maxRetries: 2, timeout: 5 * 60_000 });
-  return client;
-}
+export { aiAvailable, platformAiAvailable, resolveAiConfig, testAi, DEFAULT_MODELS } from "./providers.js";
 
 const PLATFORM_HINTS: Record<ProviderId, string> = {
-  instagram: "Instagram: ilk cümle kanca, 2200 karakter sınırı, 5-15 hashtag sona, emoji ölçülü, satır boşluklarıyla okunabilir.",
-  facebook: "Facebook Sayfası: sohbet tonunda, 1-3 paragraf, hashtag az (0-3), soru ile etkileşim iste.",
-  threads: "Threads: en fazla 500 karakter, kısa ve sohbet gibi, hashtag yok ya da 1 tane.",
-  whatsapp: "WhatsApp: kısa, kişisel, samimi; 1-2 paragraf.",
-  x: "X: 280 karakter sınırı, keskin ve net, 0-2 hashtag; zincir gerekiyorsa parçaları --- ile ayır.",
-  linkedin: "LinkedIn: profesyonel ama insan sesi, ilk 2 satır kanca (devamını gör kırılımı), 3000 karakter, 3-5 hashtag sona.",
-  tiktok: "TikTok: video açıklaması, 150 karakter civarı, 3-5 hashtag, kanca ilk kelimelerde.",
-  youtube: "YouTube: 'title' alanına 60-70 karakterlik başlık, metin = açıklama (ilk 2 satır önemli), zaman damgaları ve CTA ekle.",
-  telegram: "Telegram kanalı: 4096 karakter, düz metin, net başlık satırı, hashtag opsiyonel.",
+  instagram: "Instagram: first line is the hook, max 2200 chars, 5-15 hashtags at the end, moderate emoji, line breaks for readability.",
+  facebook: "Facebook Page: conversational, 1-3 short paragraphs, 0-3 hashtags, invite engagement with a question.",
+  threads: "Threads: max 500 chars, short and conversational, zero or one hashtag.",
+  whatsapp: "WhatsApp: short, personal, warm; 1-2 paragraphs.",
+  x: "X: max 280 chars per post, sharp and clear, 0-2 hashtags; for threads separate parts with a line containing only ---.",
+  linkedin: "LinkedIn: professional but human, the first 2 lines are the hook (see-more cut), max 3000 chars, 3-5 hashtags at the end.",
+  tiktok: "TikTok: video caption around 150 chars, 3-5 hashtags, hook in the first words.",
+  youtube: "YouTube: put a 60-70 char title in 'title'; text = description (first 2 lines matter), add chapters/CTA if useful.",
+  telegram: "Telegram channel: up to 4096 chars, plain text, clear headline line, hashtags optional.",
 };
 
 const KIND_HINTS: Record<PostKind, string> = {
-  post: "Normal akış gönderisi.",
-  story: "Hikaye: 24 saatlik, ekranda 1-3 kısa cümle, büyük tipografi mantığı; ayrıca 'visualDirection' alanında görsel yönerge ver.",
-  reel: "Reel/kısa video açıklaması: ilk cümle kanca, hashtag'ler sona.",
-  video: "Video açıklaması: ne göreceklerini özetle, CTA ekle.",
-  thread: "Zincir: 3-7 parça, her parça tek fikir, parçaları --- ile ayır.",
+  post: "Regular feed post.",
+  story: "Story: ephemeral, 1-3 short on-screen lines, big-typography mindset; always fill visualDirection.",
+  reel: "Reel / short video caption: first sentence is the hook, hashtags at the end; always fill visualDirection with a shot list.",
+  video: "Video description: summarize what viewers get, add a CTA.",
+  thread: "Thread: 3-7 parts, one idea per part, separate parts with a line containing only ---.",
 };
 
-function systemPrompt(extra = ""): Anthropic.TextBlockParam[] {
-  const brand = loadBrandContext();
-  const s = settingsRepo.get();
-  const base = [
-    "Sen SosyalPilot'un içerik ve müşteri iletişimi asistanısın. Türkçe yazarsın (kullanıcı başka dil istemedikçe).",
-    "Kurallar: uydurma sayı, sahte referans, sahte indirim yok. Marka 'ne değiliz' satırlarına ters düşme. Yasak kelimeleri asla kullanma.",
-    "Em dash (—) kullanma; ayraç gerekiyorsa nokta, virgül, iki nokta ya da orta nokta (·) kullan.",
-    "Ünlem yağmuru ve klişe pazarlama dili ('kaçırma', 'son fırsat', 'efsane') yok; markanın sesine sadık kal.",
-    s.brandName ? `Marka: ${s.brandName}` : "",
-    brand.text ? "\n# Marka hafızası\n" + brand.text : "\n(Marka hafızası boş. Panel > Ayarlar > Marka bölümünden doldurulursa ton buna göre ayarlanır.)",
+function languageName(locale: Locale): string {
+  return locale === "en" ? "English" : "Turkish";
+}
+
+function systemPrompt(orgId: string, extra = ""): string {
+  const brand = loadBrandContext(orgId);
+  const org = orgsRepo.get(orgId);
+  const locale = org?.locale ?? "tr";
+  return [
+    "You are the content and customer-communication assistant of a social media management platform.",
+    `Write in ${languageName(locale)} unless the user explicitly asks for another language.`,
+    "Rules: no invented numbers, fake testimonials or fake discounts. Never use the brand's banned words. Stay true to the brand voice.",
+    "Do not use em dashes (—); use periods, commas or colons instead. No exclamation-mark spam and no cliché marketing phrases.",
+    brand.text ? `\n# Brand memory\n${brand.text}` : "\n(No brand profile yet; keep a neutral, friendly, professional tone.)",
     extra,
   ]
     .filter(Boolean)
     .join("\n");
-  return [{ type: "text", text: base, cache_control: { type: "ephemeral" } }];
 }
 
-function textOf(msg: Anthropic.Message): string {
-  return msg.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
+function requireAi(orgId: string): AiConfig {
+  const cfg = resolveAiConfig(orgId);
+  if (!cfg) throw new AppError(400, "ai.disabled");
+  consumeAiQuota(orgId, cfg.usingPlatformKey);
+  return cfg;
 }
 
 /* ---------------- İçerik üretimi ---------------- */
 
 const VariantSchema = z.object({
-  platform: z.string().describe("Sağlayıcı kimliği: instagram, facebook, x, linkedin, threads, tiktok, youtube, telegram"),
-  hook: z.string().describe("İlk cümle / kanca"),
-  text: z.string().describe("Platforma hazır tam metin (hashtag'ler dahil)"),
+  platform: z.string().describe("Provider id: instagram, facebook, x, linkedin, threads, tiktok, youtube, telegram"),
+  hook: z.string().describe("Opening line / hook"),
+  text: z.string().describe("Ready-to-publish full text for this platform, including hashtags"),
   hashtags: z.array(z.string()),
-  title: z.string().nullable().describe("YouTube/TikTok gibi başlık isteyen platformlar için başlık, yoksa null"),
-  visualDirection: z.string().nullable().describe("Görsel/video için yönerge (hikaye ve reel için zorunlu), yoksa null"),
-  bestTimeHint: z.string().nullable().describe("Önerilen paylaşım zamanı (ör. 'Salı 19:30'), yoksa null"),
+  title: z.string().nullable().describe("Title for platforms that need one (YouTube), otherwise null"),
+  visualDirection: z.string().nullable().describe("Direction for the image/video (required for story and reel), otherwise null"),
+  firstComment: z.string().nullable().describe("Optional first comment (e.g. link or extra hashtags), otherwise null"),
 });
 
 const GenerateSchema = z.object({
   variants: z.array(VariantSchema),
-  alternativeHooks: z.array(z.string()).describe("Farklı açıdan 3 kanca: dert, sayı, karşı görüş"),
+  alternativeHooks: z.array(z.string()).describe("3 hooks from different angles: pain point, number, contrarian"),
   notes: z.string().nullable(),
 });
 
@@ -94,63 +85,44 @@ export interface GenerateInput {
   extraInstructions?: string;
 }
 
-export async function generateContent(input: GenerateInput): Promise<GeneratedContent> {
-  const c = getClient();
-  const platformLines = input.platforms.map((p) => `- ${p}: ${PLATFORM_HINTS[p]}`).join("\n");
+export async function generateContent(orgId: string, input: GenerateInput): Promise<GeneratedContent> {
+  const cfg = requireAi(orgId);
+  const platforms = [...new Set(input.platforms)];
   const prompt = [
-    `Konu / brief: ${input.topic}`,
-    `Gönderi türü: ${input.kind}. ${KIND_HINTS[input.kind]}`,
-    input.goal ? `Amaç: ${input.goal}` : "",
-    input.tone ? `İstenen ton: ${input.tone}` : "",
-    input.language ? `Dil: ${input.language}` : "",
-    "Hedef platformlar ve kuralları:\n" + platformLines,
-    input.extraInstructions ? `Ek talimat: ${input.extraInstructions}` : "",
-    "Her platform için ayrı bir variant üret. Metinler kopyala-yapıştır hazır olsun.",
+    `Topic / brief: ${input.topic}`,
+    `Post type: ${input.kind}. ${KIND_HINTS[input.kind]}`,
+    input.goal ? `Goal: ${input.goal}` : "",
+    input.tone ? `Desired tone: ${input.tone}` : "",
+    input.language ? `Language: ${input.language}` : "",
+    "Target platforms and their rules:\n" + platforms.map((p) => `- ${p}: ${PLATFORM_HINTS[p]}`).join("\n"),
+    input.extraInstructions ? `Extra instructions: ${input.extraInstructions}` : "",
+    "Produce exactly one variant per target platform. Texts must be copy-paste ready.",
   ]
     .filter(Boolean)
     .join("\n\n");
-  const res = await c.messages.parse({
-    model: config.ai.model,
-    max_tokens: 16000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "high", format: zodOutputFormat(GenerateSchema) },
-    system: systemPrompt(),
-    messages: [{ role: "user", content: prompt }],
-  });
-  if (res.stop_reason === "refusal") throw new Error("Model bu isteği reddetti");
-  if (!res.parsed_output) throw new Error("İçerik üretilemedi (boş yanıt)");
-  return res.parsed_output;
+  return aiJson(cfg, GenerateSchema, { system: systemPrompt(orgId), user: prompt, maxTokens: 16000, effort: "high" });
 }
 
 /* ---------------- Metin iyileştirme ---------------- */
 
-export async function improveText(text: string, instruction: string, platform?: ProviderId): Promise<string> {
-  const c = getClient();
-  const res = await c.messages.create({
-    model: config.ai.model,
-    max_tokens: 4000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium" },
-    system: systemPrompt("Sadece yeniden yazılmış metni döndür; açıklama, başlık, tırnak ekleme."),
-    messages: [
-      {
-        role: "user",
-        content: `Metin:\n${text}\n\nTalimat: ${instruction}${platform ? `\nPlatform kuralı: ${PLATFORM_HINTS[platform]}` : ""}`,
-      },
-    ],
+export async function improveText(orgId: string, text: string, instruction: string, platform?: ProviderId): Promise<string> {
+  const cfg = requireAi(orgId);
+  return aiText(cfg, {
+    system: systemPrompt(orgId, "Return ONLY the rewritten text. No explanation, no heading, no quotes."),
+    user: `Text:\n${text}\n\nInstruction: ${instruction}${platform ? `\nPlatform rule: ${PLATFORM_HINTS[platform]}` : ""}`,
+    maxTokens: 4000,
+    effort: "medium",
   });
-  if (res.stop_reason === "refusal") throw new Error("Model bu isteği reddetti");
-  return textOf(res);
 }
 
 /* ---------------- DM yanıtı ---------------- */
 
 const ReplySchema = z.object({
-  reply: z.string().describe("Müşteriye gönderilecek yanıt metni; boş string ise yanıt verme"),
+  reply: z.string().describe("Reply to send to the customer; empty string means do not reply"),
   intent: z.enum(["sales", "support", "complaint", "spam", "greeting", "other"]),
-  handoff: z.boolean().describe("İnsan devralmalı mı (şikayet, öfke, karmaşık talep, fiyat pazarlığı, hukuki konu)"),
+  handoff: z.boolean().describe("Should a human take over (complaint, anger, complex request, price negotiation, legal topic)"),
   confidence: z.number().min(0).max(1),
-  summary: z.string().describe("Konuşmanın tek cümlelik özeti"),
+  summary: z.string().describe("One-sentence summary of the conversation"),
 });
 
 export type DraftedReply = z.infer<typeof ReplySchema>;
@@ -162,60 +134,107 @@ export interface DraftReplyInput {
   ruleInstructions?: string | null;
 }
 
-export async function draftReply(input: DraftReplyInput): Promise<DraftedReply> {
-  const c = getClient();
-  const s = settingsRepo.get();
-  const history = input.history.slice(-20).map((m) => ({
-    role: m.direction === "in" ? ("user" as const) : ("assistant" as const),
-    content: m.text || "[medya]",
-  }));
-  // Sıralamayı API için normalize et: ilk mesaj user olmalı ve ardışık aynı roller birleşmeli
-  const merged: Array<{ role: "user" | "assistant"; content: string }> = [];
-  for (const h of history) {
-    const last = merged[merged.length - 1];
-    if (last && last.role === h.role) last.content += "\n" + h.content;
-    else merged.push({ ...h });
-  }
-  while (merged.length && merged[0].role !== "user") merged.shift();
-  if (!merged.length) merged.push({ role: "user", content: "[boş mesaj]" });
-  const transcript = merged.map((m) => `${m.role === "user" ? "MÜŞTERİ" : "BİZ"}: ${m.content}`).join("\n");
-
+export async function draftReply(orgId: string, input: DraftReplyInput): Promise<DraftedReply> {
+  const cfg = requireAi(orgId);
+  const s = orgSettingsRepo.get(orgId);
+  const transcript = input.history
+    .slice(-20)
+    .map((m) => `${m.direction === "in" ? "CUSTOMER" : "US"}: ${m.text || "[media]"}`)
+    .join("\n");
   const extra = [
-    `Şu an bir müşteri ${input.platform} üzerinden DM yazıyor${input.participantName ? ` (adı: ${input.participantName})` : ""}.`,
-    "Görev: konuşma geçmişine bakarak markanın sesiyle kısa, net, yardımcı bir yanıt yaz. 2-4 cümle. Emoji en fazla 1.",
-    "Bilmediğin bilgi (stok, kargo süresi, fiyat) için uydurma; 'ekibimiz kısa sürede net bilgi verecek' de ve handoff=true işaretle.",
-    "Spam/alakasız mesajlarda reply boş string bırak.",
-    s.aiReplyInstructions ? `Panel talimatı: ${s.aiReplyInstructions}` : "",
-    input.ruleInstructions ? `Kural talimatı: ${input.ruleInstructions}` : "",
+    `A customer is messaging us via ${input.platform}${input.participantName ? ` (name: ${input.participantName})` : ""}.`,
+    "Task: based on the conversation, write a short, clear, helpful reply in the brand voice. 2-4 sentences, at most one emoji. Reply in the customer's language.",
+    "Never invent facts (stock, shipping times, prices). If you don't know, say the team will follow up shortly and set handoff=true.",
+    "For spam or irrelevant messages leave reply as an empty string.",
+    s.aiReplyInstructions ? `Workspace instructions: ${s.aiReplyInstructions}` : "",
+    input.ruleInstructions ? `Rule instructions: ${input.ruleInstructions}` : "",
   ]
     .filter(Boolean)
     .join("\n");
-
-  const res = await c.messages.parse({
-    model: config.ai.model,
-    max_tokens: 2000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium", format: zodOutputFormat(ReplySchema) },
-    system: systemPrompt(extra),
-    messages: [{ role: "user", content: `Konuşma geçmişi (son mesaj müşterinin):\n${transcript}\n\nYanıtı üret.` }],
-  });
-  if (res.stop_reason === "refusal") return { reply: "", intent: "other", handoff: true, confidence: 0, summary: "Model yanıt üretmeyi reddetti" };
-  if (!res.parsed_output) throw new Error("Yanıt üretilemedi");
-  return res.parsed_output;
+  try {
+    return await aiJson(cfg, ReplySchema, {
+      system: systemPrompt(orgId, extra),
+      user: `Conversation (the last message is from the customer):\n${transcript}\n\nWrite the reply.`,
+      maxTokens: 2000,
+      effort: "medium",
+    });
+  } catch (e) {
+    if (e instanceof AppError && e.key === "ai.refused") return { reply: "", intent: "other", handoff: true, confidence: 0, summary: "refused" };
+    throw e;
+  }
 }
 
 /* ---------------- Gelen kutusu özeti ---------------- */
 
-export async function summarizeConversations(items: Array<{ name: string; platform: string; lastMessage: string; unread: number }>): Promise<string> {
-  const c = getClient();
-  const list = items.map((i, idx) => `${idx + 1}. [${i.platform}] ${i.name} (${i.unread} okunmamış): ${i.lastMessage}`).join("\n");
-  const res = await c.messages.create({
-    model: config.ai.model,
-    max_tokens: 3000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "low" },
-    system: systemPrompt("Gelen kutusunu yöneticiye özetliyorsun. Madde madde: acil olanlar, satış fırsatları, şikayetler, geri kalan. Kısa ve eyleme dönük."),
-    messages: [{ role: "user", content: `Konuşmalar:\n${list}` }],
+export async function summarizeConversations(orgId: string, items: Array<{ name: string; platform: string; lastMessage: string; unread: number }>): Promise<string> {
+  const cfg = requireAi(orgId);
+  const list = items.map((i, idx) => `${idx + 1}. [${i.platform}] ${i.name} (${i.unread} unread): ${i.lastMessage}`).join("\n");
+  return aiText(cfg, {
+    system: systemPrompt(orgId, "You summarize the inbox for a manager. Bullet points: urgent, sales opportunities, complaints, the rest. Short and action-oriented."),
+    user: `Conversations:\n${list}`,
+    maxTokens: 3000,
+    effort: "low",
   });
-  return textOf(res);
+}
+
+/* ---------------- Kampanya planlama (AI içerik takvimi) ---------------- */
+
+const PlanItemSchema = z.object({
+  dayOffset: z.number().int().min(0).describe("Days after the plan start date (0 = first day)"),
+  time: z.string().nullable().describe("Preferred local time HH:mm, or null to use the channel's next free posting slot"),
+  kind: z.enum(["post", "story", "reel", "video", "thread"]),
+  platforms: z.array(z.string()).describe("Provider ids this item targets (subset of the available ones)"),
+  title: z.string().describe("Short internal title for the calendar"),
+  angle: z.string().describe("Content angle / pillar (e.g. education, social proof, behind the scenes, offer)"),
+  texts: z
+    .array(z.object({ platform: z.string(), text: z.string(), title: z.string().nullable() }))
+    .describe("Ready-to-publish text per platform"),
+  firstComment: z.string().nullable(),
+  hashtags: z.array(z.string()),
+  visualDirection: z.string().describe("What image or video to prepare"),
+});
+
+const PlanSchema = z.object({
+  name: z.string().describe("Campaign name"),
+  strategy: z.string().describe("2-4 sentence strategy summary"),
+  pillars: z.array(z.string()),
+  items: z.array(PlanItemSchema),
+});
+
+export type GeneratedPlan = z.infer<typeof PlanSchema>;
+
+export interface PlanInput {
+  brief: string;
+  goal?: string;
+  days: number;
+  postsPerWeek: number;
+  platforms: ProviderId[];
+  kinds?: PostKind[];
+  tone?: string;
+  startDate: string;
+}
+
+export async function generatePlan(orgId: string, input: PlanInput): Promise<GeneratedPlan> {
+  const cfg = requireAi(orgId);
+  const total = Math.max(1, Math.min(40, Math.round((input.days / 7) * input.postsPerWeek)));
+  const platforms = [...new Set(input.platforms)];
+  const prompt = [
+    `Build a social media content plan.`,
+    `Brief: ${input.brief}`,
+    input.goal ? `Goal: ${input.goal}` : "",
+    input.tone ? `Tone: ${input.tone}` : "",
+    `Plan length: ${input.days} days starting ${input.startDate}. Create about ${total} items spread evenly (vary weekdays; avoid more than one item per day per platform unless necessary).`,
+    `Allowed post types: ${(input.kinds?.length ? input.kinds : ["post", "reel", "story"]).join(", ")}.`,
+    "Platforms and rules:\n" + platforms.map((p) => `- ${p}: ${PLATFORM_HINTS[p]}`).join("\n"),
+    "Mix content pillars (education, proof, behind-the-scenes, community, offer). Every item must have a concrete hook and a texts entry for each of its platforms.",
+    "Use time = null unless the brief requires a specific hour; the system will place posts into free posting slots.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const plan = await aiJson(cfg, PlanSchema, { system: systemPrompt(orgId), user: prompt, maxTokens: 16000, effort: "medium" });
+  // Modelin izin verilmeyen platform üretmesine karşı süzgeç
+  plan.items = plan.items
+    .map((it) => ({ ...it, platforms: it.platforms.filter((p) => platforms.includes(p as ProviderId)), texts: it.texts.filter((x) => platforms.includes(x.platform as ProviderId)) }))
+    .filter((it) => it.platforms.length > 0);
+  return plan;
 }

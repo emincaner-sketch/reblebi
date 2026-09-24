@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
-import { settingsRepo } from "./repos/misc.js";
+import { orgSettingsRepo, orgsRepo } from "./repos/orgs.js";
 
 /**
- * Marka hafızası: sistemler/marka-hafizasi/hafiza altındaki markdown dosyaları (varsa)
- * + paneldeki marka ayarları. AI üretimlerinde sistem promptuna eklenir.
+ * Marka hafızası: çalışma alanının panelde girdiği marka bilgileri.
+ * Kurulumu yapan (süper admin) çalışma alanı için ek olarak BRAND_MEMORY_DIR klasöründeki
+ * markdown dosyaları da okunur (sistemler/marka-hafizasi/hafiza).
  */
 export interface BrandContext {
   text: string;
@@ -21,7 +22,7 @@ function readIfExists(p: string): string | null {
   return null;
 }
 
-/** Şablon dosyalarında doldurulmamış örnek satırları ayıkla (çok kaba: "Örnek:" ve "<...>" satırları) */
+/** Şablon dosyalarında doldurulmamış örnek satırları ayıkla */
 function stripTemplateNoise(md: string): string {
   return md
     .split("\n")
@@ -31,41 +32,39 @@ function stripTemplateNoise(md: string): string {
     .trim();
 }
 
-export function loadBrandContext(): BrandContext {
+export function loadBrandContext(orgId: string): BrandContext {
   const sources: string[] = [];
   const parts: string[] = [];
-  const s = settingsRepo.get();
+  const s = orgSettingsRepo.get(orgId);
+  const org = orgsRepo.get(orgId);
 
   const panel: string[] = [];
-  if (s.brandName) panel.push(`Marka adı: ${s.brandName}`);
-  if (s.brandAudience) panel.push(`Hedef kitle: ${s.brandAudience}`);
-  if (s.brandOffers) panel.push(`Teklifler / ürünler:\n${s.brandOffers}`);
-  if (s.brandVoice) panel.push(`Ses tonu: ${s.brandVoice}`);
-  if (s.brandBannedWords) panel.push(`YASAK kelimeler ve kalıplar (asla kullanma): ${s.brandBannedWords}`);
-  if (s.brandExamples) panel.push(`Markanın kendi sesinden örnek cümleler:\n${s.brandExamples}`);
+  if (s.brandName) panel.push(`Brand name: ${s.brandName}`);
+  if (s.brandAudience) panel.push(`Target audience: ${s.brandAudience}`);
+  if (s.brandOffers) panel.push(`Offers / products:\n${s.brandOffers}`);
+  if (s.brandVoice) panel.push(`Voice & tone: ${s.brandVoice}`);
+  if (s.brandBannedWords) panel.push(`BANNED words and patterns (never use): ${s.brandBannedWords}`);
+  if (s.brandExamples) panel.push(`Example sentences in the brand's own voice:\n${s.brandExamples}`);
   if (panel.length) {
-    parts.push("## Panelde tanımlı marka bilgileri\n" + panel.join("\n"));
+    parts.push("## Brand profile\n" + panel.join("\n"));
     sources.push("panel");
   }
 
-  if (config.ai.brandMemoryDir) {
-    const files = ["01-marka-kimlik.md", "02-ses.md", "03-kararlar.md"];
-    for (const f of files) {
+  // Dosya tabanlı marka hafızası sadece varsayılan (kurulum) çalışma alanı içindir
+  if (config.ai.brandMemoryDir && (orgId === "org_default" || org?.plan === "unlimited")) {
+    for (const f of ["01-marka-kimlik.md", "02-ses.md", "03-kararlar.md"]) {
       const raw = readIfExists(path.join(config.ai.brandMemoryDir, f));
       if (!raw) continue;
-      // Doldurulmamış şablon (çok sayıda <...> yer tutucu) ise atla
-      if ((raw.match(/<[^>\n]+>/g) ?? []).length >= 3) continue;
+      if ((raw.match(/<[^>\n]+>/g) ?? []).length >= 3) continue; // doldurulmamış şablon
       const cleaned = stripTemplateNoise(raw);
-      // Sadece başlıklardan ibaretse (şablon doldurulmamış) atla
       const meaningful = cleaned.split("\n").filter((l) => l.trim() && !l.startsWith("#")).length;
       if (meaningful < 3) continue;
       parts.push(cleaned);
       sources.push(f);
     }
-    // Hook kalıpları (carousel-uretici sistemi) varsa ekle
     const hooks = readIfExists(path.join(config.ai.brandMemoryDir, "..", "..", "carousel-uretici", "format", "hook-kaliplari.md"));
     if (hooks) {
-      parts.push("## Hook (kanca) kalıpları\n" + hooks.slice(0, 6000));
+      parts.push("## Hook patterns\n" + hooks.slice(0, 6000));
       sources.push("hook-kaliplari.md");
     }
   }

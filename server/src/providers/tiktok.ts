@@ -6,7 +6,7 @@ import { expiresIn, http, sleep } from "./http.js";
 import { ProviderError, type Provider, type PublishInput, type PublishResult } from "./types.js";
 
 const API = "https://open.tiktokapis.com/v2";
-const SCOPES = ["user.info.basic", "user.info.profile", "user.info.stats", "video.publish", "video.upload"];
+const SCOPES = ["user.info.basic", "user.info.profile", "user.info.stats", "video.publish", "video.upload", "video.list"];
 
 function bearer(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
@@ -54,6 +54,8 @@ export const tiktokProvider: Provider = {
     inbound: "none",
     analytics: true,
     maxTextLength: 2200,
+    maxMedia: 35,
+    requiresMedia: true,
     mediaNote: "Video: MP4/MOV, dikey. Fotoğraf gönderileri için TikTok'ta doğrulanmış alan adı (PUBLIC_URL) gerekir. Denetimden geçmemiş uygulamalar yalnızca 'Sadece ben' gizliliğiyle paylaşabilir.",
   },
   settingFields: [
@@ -199,6 +201,21 @@ export const tiktokProvider: Provider = {
     });
     const u = check(me).user;
     return { followers: Number(u.follower_count ?? 0), likes: Number(u.likes_count ?? 0), posts: Number(u.video_count ?? 0) };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const r = await http<TikTokResp<{ videos?: Array<{ like_count?: number; comment_count?: number; share_count?: number; view_count?: number }> }>>(
+      `${API}/video/query/`,
+      {
+        method: "POST",
+        headers: bearer(channel.accessToken),
+        query: { fields: "like_count,comment_count,share_count,view_count" },
+        json: { filters: { video_ids: [externalId] } },
+        retries: 0,
+      },
+    );
+    const v = check(r).videos?.[0] ?? {};
+    return { likes: Number(v.like_count ?? 0), comments: Number(v.comment_count ?? 0), shares: Number(v.share_count ?? 0), views: Number(v.view_count ?? 0) };
   },
 
   async healthCheck(channel: Channel) {

@@ -49,6 +49,8 @@ export const facebookProvider: Provider = {
     inbound: "webhook",
     analytics: true,
     maxTextLength: 63206,
+    comments: true,
+    maxMedia: 10,
     mediaNote: "Görsel: JPG/PNG. Video: MP4 (reels 9:16). Hikaye: 1 görsel veya 1 video.",
   },
   settingFields: [
@@ -156,6 +158,24 @@ export const facebookProvider: Provider = {
       /* insights izni yoksa temel metriklerle yetin */
     }
     return metrics;
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    const r = await graph<{ id: string }>(`/${replyToExternalId ?? parentExternalId}/comments`, channel.accessToken, { method: "POST", params: { message: text } });
+    return { externalId: r.id };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const r = await graph<{ reactions?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } }; shares?: { count?: number } }>(
+      `/${externalId}`,
+      channel.accessToken,
+      { params: { fields: "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares" } },
+    );
+    return {
+      likes: Number(r.reactions?.summary?.total_count ?? 0),
+      comments: Number(r.comments?.summary?.total_count ?? 0),
+      shares: Number(r.shares?.count ?? 0),
+    };
   },
 
   async healthCheck(channel: Channel) {

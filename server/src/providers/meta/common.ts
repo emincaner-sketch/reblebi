@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { config } from "../../core/config.js";
 import { http, sleep } from "../http.js";
 import { ProviderError, type ConnectedAccount, type OAuthStart } from "../types.js";
@@ -74,6 +75,9 @@ export async function metaOAuthCallback(code: string, redirectUri: string): Prom
     },
   });
   const userToken = long.access_token;
+  // Uygulamaya özel Facebook kullanıcı kimliği: Meta veri silme geri çağrısında eşleştirmek için saklanır
+  const me = await graph<{ id: string }>("/me", userToken, { params: { fields: "id" } });
+  const fbUserId = me.id;
   const pages: PageRow[] = [];
   let next: string | null = `${GRAPH()}/me/accounts`;
   let guard = 0;
@@ -106,7 +110,7 @@ export async function metaOAuthCallback(code: string, redirectUri: string): Prom
       accessToken: p.access_token,
       tokenExpiresAt: null, // uzun ömürlü kullanıcı token'ından türeyen sayfa token'ları süresizdir
       scopes: META_SCOPES.join(","),
-      metadata: { pageId: p.id, userToken },
+      metadata: { pageId: p.id, userToken, fbUserId },
     });
     if (p.instagram_business_account) {
       const ig = p.instagram_business_account;
@@ -119,7 +123,7 @@ export async function metaOAuthCallback(code: string, redirectUri: string): Prom
         accessToken: p.access_token,
         tokenExpiresAt: null,
         scopes: META_SCOPES.join(","),
-        metadata: { pageId: p.id, pageName: p.name, igUserId: ig.id },
+        metadata: { pageId: p.id, pageName: p.name, igUserId: ig.id, fbUserId },
       });
     }
   }
@@ -155,4 +159,20 @@ export async function sendPageMessage(pageId: string, token: string, recipientId
     params: { recipient: { id: recipientId }, message: { text }, messaging_type: "RESPONSE" },
   });
   return r.message_id ?? null;
+}
+
+/** Meta signed_request: base64url(imza).base64url(json), HMAC-SHA256(app secret) */
+export function parseSignedRequest(signed: string): { user_id?: string; algorithm?: string } | null {
+  const [sig, payload] = signed.split(".");
+  if (!sig || !payload || !config.meta.appSecret) return null;
+  const expected = crypto.createHmac("sha256", config.meta.appSecret).update(payload).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { user_id?: string; algorithm?: string };
+    return data.algorithm?.toUpperCase() === "HMAC-SHA256" ? data : null;
+  } catch {
+    return null;
+  }
 }

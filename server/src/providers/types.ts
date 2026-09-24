@@ -30,6 +30,14 @@ export interface Capabilities {
   inbound: "webhook" | "poll" | "none";
   analytics: boolean;
   maxTextLength: number;
+  /** Gönderi altına ilk yorum / zincir yanıtı atılabilir mi */
+  comments?: boolean;
+  /** Tek gönderide en fazla medya */
+  maxMedia?: number;
+  /** Medyasız gönderi kabul etmiyor (Instagram, TikTok, YouTube) */
+  requiresMedia?: boolean;
+  /** Sadece video kabul ediyor (YouTube) */
+  requiresVideo?: boolean;
   mediaNote?: string;
 }
 
@@ -111,6 +119,13 @@ export interface Provider {
   /** Polling tabanlı gelen kutusu için: cursor'dan itibaren yeni mesajlar */
   pollInbound?(channel: Channel, cursor: string | null): Promise<{ events: InboundEvent[]; cursor: string | null }>;
   fetchMetrics?(channel: Channel): Promise<Record<string, number>>;
+  /** Yayınlanmış bir gönderinin beğeni/yorum/görüntülenme metrikleri */
+  fetchPostMetrics?(channel: Channel, externalId: string): Promise<Record<string, number>>;
+  /**
+   * Yayınlanmış gönderinin altına yorum ya da zincir yanıtı ekler.
+   * parentExternalId: ana gönderinin id'si; replyToExternalId: zincirde bir önceki yorum (varsa)
+   */
+  publishComment?(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null): Promise<{ externalId: string }>;
   /** Kanal sağlığı: token geçerli mi */
   healthCheck?(channel: Channel): Promise<{ ok: boolean; detail?: string }>;
 }

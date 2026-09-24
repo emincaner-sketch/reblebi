@@ -79,6 +79,8 @@ export const linkedinProvider: Provider = {
     inbound: "none",
     analytics: true,
     maxTextLength: 3000,
+    comments: true,
+    maxMedia: 20,
     mediaNote: "Görsel (1-20) veya 1 video. Şirket sayfaları için LinkedIn Community Management API onayı + LINKEDIN_SCOPES env gerekir.",
   },
   settingFields: [
@@ -206,6 +208,32 @@ export const linkedinProvider: Provider = {
     let followers = 0;
     for (const e of r.elements ?? []) for (const f of e.followerCountsByAssociationType ?? []) followers += f.followerCounts.organicFollowerCount + f.followerCounts.paidFollowerCount;
     return { followers };
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    const target = replyToExternalId ?? parentExternalId;
+    const res = await fetch(`${REST}/socialActions/${encodeURIComponent(target)}/comments`, {
+      method: "POST",
+      headers: { ...headers(channel.accessToken), "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: channel.externalId, object: parentExternalId, message: { text } }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new ProviderError(`LinkedIn yorum ${res.status}: ${body.slice(0, 300)}`, res.status, body, res.status >= 500);
+    }
+    const id = res.headers.get("x-restli-id") ?? "";
+    return { externalId: id || `${target}#comment` };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const r = await http<{ likesSummary?: { totalLikes?: number }; commentsSummary?: { aggregatedTotalComments?: number; totalFirstLevelComments?: number } }>(
+      `${REST}/socialActions/${encodeURIComponent(externalId)}`,
+      { headers: headers(channel.accessToken), retries: 0 },
+    );
+    return {
+      likes: Number(r.likesSummary?.totalLikes ?? 0),
+      comments: Number(r.commentsSummary?.aggregatedTotalComments ?? r.commentsSummary?.totalFirstLevelComments ?? 0),
+    };
   },
 
   async healthCheck(channel: Channel) {

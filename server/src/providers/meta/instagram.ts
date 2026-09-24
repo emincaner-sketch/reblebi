@@ -52,6 +52,9 @@ export const instagramProvider: Provider = {
     inbound: "webhook",
     analytics: true,
     maxTextLength: 2200,
+    comments: true,
+    maxMedia: 10,
+    requiresMedia: true,
     mediaNote: "Gönderi: 1-10 görsel/video (carousel). Reel: MP4 9:16, 3sn-15dk. Hikaye: 1 görsel (9:16) veya video (<60sn). Medya herkese açık URL ile çekilir (PUBLIC_URL https olmalı).",
   },
   settingFields: [
@@ -147,6 +150,31 @@ export const instagramProvider: Provider = {
       /* insights opsiyonel */
     }
     return metrics;
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    const edge = replyToExternalId ? `/${replyToExternalId}/replies` : `/${parentExternalId}/comments`;
+    const r = await graph<{ id: string }>(edge, channel.accessToken, { method: "POST", params: { message: text } });
+    return { externalId: r.id };
+  },
+
+  async fetchPostMetrics(channel: Channel, externalId: string) {
+    const base = await graph<{ like_count?: number; comments_count?: number }>(`/${externalId}`, channel.accessToken, {
+      params: { fields: "like_count,comments_count" },
+    });
+    const m: Record<string, number> = { likes: Number(base.like_count ?? 0), comments: Number(base.comments_count ?? 0) };
+    try {
+      const ins = await graph<{ data?: Array<{ name: string; values?: Array<{ value: number }> }> }>(`/${externalId}/insights`, channel.accessToken, {
+        params: { metric: "reach,saved,shares,views" },
+      });
+      for (const d of ins.data ?? []) {
+        const v = d.values?.[0]?.value;
+        if (typeof v === "number") m[d.name] = v;
+      }
+    } catch {
+      /* hikaye/reel türüne göre bazı metrikler desteklenmeyebilir */
+    }
+    return m;
   },
 
   async healthCheck(channel: Channel) {

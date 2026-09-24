@@ -1,166 +1,128 @@
-import { getDb, nowIso, parseJson } from "../db.js";
-import { hashPassword, randomId, randomToken, sha256, verifyPassword } from "../crypto.js";
-import {
-  DEFAULT_SETTINGS,
-  type ActivityEntry,
-  type AnalyticsSnapshot,
-  type ApiKey,
-  type AutoReplyRule,
-  type MediaFile,
-  type ProviderId,
-  type RuleMatch,
-  type RuleReplyMode,
-  type Settings,
-} from "../types.js";
+import { defined, getDb, nowIso, parseJson } from "../db.js";
+import { randomId, randomToken, sha256 } from "../crypto.js";
+import type { ActivityEntry, AnalyticsSnapshot, ApiKey, AutoReplyRule, MediaFile, ProviderId, RuleMatch, RuleReplyMode } from "../types.js";
 
 type Row = Record<string, unknown>;
 
-/* ---------------- Kullanıcı / oturum / API anahtarı ---------------- */
+/* ---------------- API anahtarları (org başına) ---------------- */
 
-export const usersRepo = {
-  count(): number {
-    return Number((getDb().prepare("SELECT COUNT(*) c FROM users").get() as Row).c ?? 0);
-  },
-  create(email: string, password: string): { id: string; email: string } {
-    const id = randomId("usr");
-    getDb()
-      .prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)")
-      .run(id, email.toLowerCase().trim(), hashPassword(password), nowIso());
-    return { id, email: email.toLowerCase().trim() };
-  },
-  verify(email: string, password: string): { id: string; email: string } | null {
-    const r = getDb().prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase().trim()) as Row | undefined;
-    if (!r) return null;
-    return verifyPassword(password, r.password_hash as string) ? { id: r.id as string, email: r.email as string } : null;
-  },
-  get(id: string): { id: string; email: string } | null {
-    const r = getDb().prepare("SELECT id, email FROM users WHERE id = ?").get(id) as Row | undefined;
-    return r ? { id: r.id as string, email: r.email as string } : null;
-  },
-  changePassword(id: string, password: string): void {
-    getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(password), id);
-  },
-};
-
-export const sessionsRepo = {
-  create(userId: string, days = 30): string {
-    const id = randomToken(32);
-    const expires = new Date(Date.now() + days * 86400_000).toISOString();
-    getDb()
-      .prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
-      .run(id, userId, expires, nowIso());
-    return id;
-  },
-  resolve(id: string): string | null {
-    const r = getDb().prepare("SELECT user_id, expires_at FROM sessions WHERE id = ?").get(id) as Row | undefined;
-    if (!r) return null;
-    if (new Date(r.expires_at as string).getTime() < Date.now()) {
-      this.remove(id);
-      return null;
-    }
-    return r.user_id as string;
-  },
-  remove(id: string): void {
-    getDb().prepare("DELETE FROM sessions WHERE id = ?").run(id);
-  },
-};
+function rowToKey(r: Row): ApiKey {
+  return {
+    id: r.id as string,
+    orgId: r.org_id as string,
+    name: r.name as string,
+    prefix: r.prefix as string,
+    createdBy: (r.created_by as string) ?? null,
+    createdAt: r.created_at as string,
+    lastUsedAt: (r.last_used_at as string) ?? null,
+  };
+}
 
 export const apiKeysRepo = {
-  list(): ApiKey[] {
-    return (getDb().prepare("SELECT id, name, prefix, created_at, last_used_at FROM api_keys ORDER BY created_at DESC").all() as Row[]).map(
-      (r) => ({
-        id: r.id as string,
-        name: r.name as string,
-        prefix: r.prefix as string,
-        createdAt: r.created_at as string,
-        lastUsedAt: (r.last_used_at as string) ?? null,
-      }),
-    );
+  list(orgId: string): ApiKey[] {
+    return (getDb().prepare("SELECT * FROM api_keys WHERE org_id = ? ORDER BY created_at DESC").all(orgId) as Row[]).map(rowToKey);
   },
   /** Anahtar sadece oluşturulurken bir kez gösterilir */
-  create(name: string): { key: string; entry: ApiKey } {
+  create(orgId: string, name: string, createdBy: string | null): { key: string; entry: ApiKey } {
     const secret = "sp_" + randomToken(24);
     const id = randomId("key");
-    const prefix = secret.slice(0, 10);
-    const now = nowIso();
     getDb()
-      .prepare("INSERT INTO api_keys (id, name, prefix, key_hash, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(id, name, prefix, sha256(secret), now);
-    return { key: secret, entry: { id, name, prefix, createdAt: now, lastUsedAt: null } };
+      .prepare("INSERT INTO api_keys (id, org_id, name, prefix, key_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, orgId, name, secret.slice(0, 10), sha256(secret), createdBy, nowIso());
+    return { key: secret, entry: rowToKey(getDb().prepare("SELECT * FROM api_keys WHERE id = ?").get(id) as Row) };
   },
   verify(key: string): ApiKey | null {
     const r = getDb().prepare("SELECT * FROM api_keys WHERE key_hash = ?").get(sha256(key)) as Row | undefined;
-    if (!r) return null;
+    if (!r || !r.org_id) return null;
     getDb().prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").run(nowIso(), r.id as string);
-    return { id: r.id as string, name: r.name as string, prefix: r.prefix as string, createdAt: r.created_at as string, lastUsedAt: nowIso() };
+    return rowToKey(r);
   },
-  remove(id: string): void {
-    getDb().prepare("DELETE FROM api_keys WHERE id = ?").run(id);
+  remove(orgId: string, id: string): void {
+    getDb().prepare("DELETE FROM api_keys WHERE id = ? AND org_id = ?").run(id, orgId);
   },
 };
 
+/* ---------------- Sosyal platform OAuth durumları ---------------- */
+
 export const oauthStatesRepo = {
-  create(provider: ProviderId, codeVerifier?: string): string {
+  create(provider: ProviderId, orgId: string, userId: string | null): string {
     const state = randomToken(24);
     getDb()
-      .prepare("INSERT INTO oauth_states (state, provider, code_verifier, created_at) VALUES (?, ?, ?, ?)")
-      .run(state, provider, codeVerifier ?? null, nowIso());
-    // 1 saatten eski state kayıtlarını temizle
+      .prepare("INSERT INTO oauth_states (state, provider, code_verifier, org_id, user_id, created_at) VALUES (?, ?, NULL, ?, ?, ?)")
+      .run(state, provider, orgId, userId, nowIso());
     getDb().prepare("DELETE FROM oauth_states WHERE created_at < ?").run(new Date(Date.now() - 3600_000).toISOString());
     return state;
   },
   setVerifier(state: string, codeVerifier: string): void {
     getDb().prepare("UPDATE oauth_states SET code_verifier = ? WHERE state = ?").run(codeVerifier, state);
   },
-  consume(state: string): { provider: ProviderId; codeVerifier: string | null } | null {
+  consume(state: string): { provider: ProviderId; codeVerifier: string | null; orgId: string; userId: string | null } | null {
     const r = getDb().prepare("SELECT * FROM oauth_states WHERE state = ?").get(state) as Row | undefined;
-    if (!r) return null;
+    if (!r || !r.org_id) return null;
     getDb().prepare("DELETE FROM oauth_states WHERE state = ?").run(state);
-    return { provider: r.provider as ProviderId, codeVerifier: (r.code_verifier as string) ?? null };
+    if (new Date(r.created_at as string).getTime() < Date.now() - 3600_000) return null;
+    return { provider: r.provider as ProviderId, codeVerifier: (r.code_verifier as string) ?? null, orgId: r.org_id as string, userId: (r.user_id as string) ?? null };
   },
 };
 
 /* ---------------- Medya ---------------- */
 
-export const mediaRepo = {
-  list(limit = 200): MediaFile[] {
-    return (getDb().prepare("SELECT * FROM media ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(rowToMedia);
-  },
-  get(id: string): MediaFile | null {
-    const r = getDb().prepare("SELECT * FROM media WHERE id = ?").get(id) as Row | undefined;
-    return r ? rowToMedia(r) : null;
-  },
-  getMany(ids: string[]): MediaFile[] {
-    return ids.map((id) => this.get(id)).filter((m): m is MediaFile => Boolean(m));
-  },
-  create(input: Omit<MediaFile, "createdAt">): MediaFile {
-    getDb()
-      .prepare("INSERT INTO media (id, filename, original_name, mime, size, kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(input.id, input.filename, input.originalName, input.mime, input.size, input.kind, nowIso());
-    return this.get(input.id)!;
-  },
-  remove(id: string): void {
-    getDb().prepare("DELETE FROM media WHERE id = ?").run(id);
-  },
-};
-
 function rowToMedia(r: Row): MediaFile {
   return {
     id: r.id as string,
+    orgId: r.org_id as string,
     filename: r.filename as string,
     originalName: r.original_name as string,
     mime: r.mime as string,
     size: Number(r.size),
     kind: r.kind as MediaFile["kind"],
+    altText: (r.alt_text as string) ?? null,
     createdAt: r.created_at as string,
   };
 }
+
+export const mediaRepo = {
+  list(orgId: string, opts: { limit?: number; offset?: number; kind?: MediaFile["kind"] } = {}): MediaFile[] {
+    const rows = opts.kind
+      ? getDb().prepare("SELECT * FROM media WHERE org_id = ? AND kind = ? ORDER BY created_at DESC LIMIT ? OFFSET ?").all(orgId, opts.kind, opts.limit ?? 200, opts.offset ?? 0)
+      : getDb().prepare("SELECT * FROM media WHERE org_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?").all(orgId, opts.limit ?? 200, opts.offset ?? 0);
+    return (rows as Row[]).map(rowToMedia);
+  },
+  get(orgId: string, id: string): MediaFile | null {
+    const r = getDb().prepare("SELECT * FROM media WHERE id = ? AND org_id = ?").get(id, orgId) as Row | undefined;
+    return r ? rowToMedia(r) : null;
+  },
+  getMany(orgId: string, ids: string[]): MediaFile[] {
+    return ids.map((id) => this.get(orgId, id)).filter((m): m is MediaFile => Boolean(m));
+  },
+  create(input: Omit<MediaFile, "createdAt" | "altText"> & { altText?: string | null }): MediaFile {
+    getDb()
+      .prepare("INSERT INTO media (id, org_id, filename, original_name, mime, size, kind, alt_text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(input.id, input.orgId, input.filename, input.originalName, input.mime, input.size, input.kind, input.altText ?? null, nowIso());
+    return this.get(input.orgId, input.id)!;
+  },
+  setAlt(orgId: string, id: string, altText: string | null): void {
+    getDb().prepare("UPDATE media SET alt_text = ? WHERE id = ? AND org_id = ?").run(altText, id, orgId);
+  },
+  totalBytes(orgId: string): number {
+    return Number((getDb().prepare("SELECT COALESCE(SUM(size),0) s FROM media WHERE org_id = ?").get(orgId) as Row).s ?? 0);
+  },
+  remove(orgId: string, id: string): void {
+    getDb().prepare("DELETE FROM media WHERE id = ? AND org_id = ?").run(id, orgId);
+  },
+  /** Medya dosyası servisi için: dosya adı hangi org'a ait */
+  findByFilename(filename: string): MediaFile | null {
+    const r = getDb().prepare("SELECT * FROM media WHERE filename = ?").get(filename) as Row | undefined;
+    return r ? rowToMedia(r) : null;
+  },
+};
 
 /* ---------------- Oto-yanıt kuralları ---------------- */
 
 function rowToRule(r: Row): AutoReplyRule {
   return {
     id: r.id as string,
+    orgId: r.org_id as string,
     name: r.name as string,
     enabled: Number(r.enabled ?? 1),
     channelId: (r.channel_id as string) ?? null,
@@ -179,27 +141,28 @@ function rowToRule(r: Row): AutoReplyRule {
   };
 }
 
-export type RuleInput = Omit<AutoReplyRule, "id" | "createdAt" | "updatedAt">;
+export type RuleInput = Omit<AutoReplyRule, "id" | "orgId" | "createdAt" | "updatedAt">;
 
 export const rulesRepo = {
-  list(): AutoReplyRule[] {
-    return (getDb().prepare("SELECT * FROM auto_reply_rules ORDER BY priority ASC, created_at ASC").all() as Row[]).map(rowToRule);
+  list(orgId: string): AutoReplyRule[] {
+    return (getDb().prepare("SELECT * FROM auto_reply_rules WHERE org_id = ? ORDER BY priority ASC, created_at ASC").all(orgId) as Row[]).map(rowToRule);
   },
-  get(id: string): AutoReplyRule | null {
-    const r = getDb().prepare("SELECT * FROM auto_reply_rules WHERE id = ?").get(id) as Row | undefined;
+  get(orgId: string, id: string): AutoReplyRule | null {
+    const r = getDb().prepare("SELECT * FROM auto_reply_rules WHERE id = ? AND org_id = ?").get(id, orgId) as Row | undefined;
     return r ? rowToRule(r) : null;
   },
-  create(input: RuleInput): AutoReplyRule {
+  create(orgId: string, input: RuleInput): AutoReplyRule {
     const id = randomId("rule");
     const now = nowIso();
     getDb()
       .prepare(
-        `INSERT INTO auto_reply_rules (id, name, enabled, channel_id, provider, match_type, pattern, reply_mode, reply_text, ai_instructions,
+        `INSERT INTO auto_reply_rules (id, org_id, name, enabled, channel_id, provider, match_type, pattern, reply_mode, reply_text, ai_instructions,
          priority, cooldown_minutes, only_business_hours, handoff_to_human, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
+        orgId,
         input.name,
         input.enabled ? 1 : 0,
         input.channelId ?? null,
@@ -216,81 +179,66 @@ export const rulesRepo = {
         now,
         now,
       );
-    return this.get(id)!;
+    return this.get(orgId, id)!;
   },
-  update(id: string, input: Partial<RuleInput>): AutoReplyRule | null {
-    const cur = this.get(id);
+  update(orgId: string, id: string, input: Partial<RuleInput>): AutoReplyRule | null {
+    const cur = this.get(orgId, id);
     if (!cur) return null;
-    const merged = { ...cur, ...input };
+    const m = { ...cur, ...defined(input) };
     getDb()
       .prepare(
         `UPDATE auto_reply_rules SET name=?, enabled=?, channel_id=?, provider=?, match_type=?, pattern=?, reply_mode=?, reply_text=?,
-         ai_instructions=?, priority=?, cooldown_minutes=?, only_business_hours=?, handoff_to_human=?, updated_at=? WHERE id=?`,
+         ai_instructions=?, priority=?, cooldown_minutes=?, only_business_hours=?, handoff_to_human=?, updated_at=? WHERE id=? AND org_id=?`,
       )
       .run(
-        merged.name,
-        merged.enabled ? 1 : 0,
-        merged.channelId ?? null,
-        merged.provider ?? null,
-        merged.matchType,
-        merged.pattern ?? null,
-        merged.replyMode,
-        merged.replyText ?? null,
-        merged.aiInstructions ?? null,
-        merged.priority,
-        merged.cooldownMinutes,
-        merged.onlyBusinessHours ? 1 : 0,
-        merged.handoffToHuman ? 1 : 0,
+        m.name,
+        m.enabled ? 1 : 0,
+        m.channelId ?? null,
+        m.provider ?? null,
+        m.matchType,
+        m.pattern ?? null,
+        m.replyMode,
+        m.replyText ?? null,
+        m.aiInstructions ?? null,
+        m.priority,
+        m.cooldownMinutes,
+        m.onlyBusinessHours ? 1 : 0,
+        m.handoffToHuman ? 1 : 0,
         nowIso(),
         id,
+        orgId,
       );
-    return this.get(id);
+    return this.get(orgId, id);
   },
-  remove(id: string): void {
-    getDb().prepare("DELETE FROM auto_reply_rules WHERE id = ?").run(id);
+  remove(orgId: string, id: string): void {
+    getDb().prepare("DELETE FROM auto_reply_rules WHERE id = ? AND org_id = ?").run(id, orgId);
   },
 };
 
-/* ---------------- Ayarlar ---------------- */
+/* ---------------- Platform geneli anahtar/değer ayarları ---------------- */
 
-export const settingsRepo = {
-  get(): Settings {
-    const r = getDb().prepare("SELECT value FROM settings WHERE key = 'app'").get() as Row | undefined;
-    return { ...DEFAULT_SETTINGS, ...parseJson<Partial<Settings>>(r?.value, {}) };
-  },
-  set(patch: Partial<Settings>): Settings {
-    const merged = { ...this.get(), ...patch };
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES ('app', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-      .run(JSON.stringify(merged));
-    return merged;
-  },
-  getValue(key: string): string | null {
+export const platformSettingsRepo = {
+  get(key: string): string | null {
     const r = getDb().prepare("SELECT value FROM settings WHERE key = ?").get(key) as Row | undefined;
     return r ? (r.value as string) : null;
   },
-  setValue(key: string, value: string): void {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-      .run(key, value);
+  set(key: string, value: string): void {
+    getDb().prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value);
   },
 };
 
-/* ---------------- Aktivite / webhook / analitik / poll cursor ---------------- */
+/* ---------------- Aktivite günlüğü ---------------- */
 
 export const activityRepo = {
-  add(level: ActivityEntry["level"], source: string, message: string, data?: Record<string, unknown>): void {
+  add(orgId: string | null, level: ActivityEntry["level"], source: string, message: string, data?: Record<string, unknown>): void {
     getDb()
-      .prepare("INSERT INTO activity_log (id, level, source, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(randomId("act"), level, source, message, data ? JSON.stringify(data) : null, nowIso());
-    // Tabloyu makul boyutta tut
-    getDb().prepare(
-      "DELETE FROM activity_log WHERE id IN (SELECT id FROM activity_log ORDER BY created_at DESC LIMIT -1 OFFSET 5000)",
-    ).run();
+      .prepare("INSERT INTO activity_log (id, org_id, level, source, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(randomId("act"), orgId, level, source, message, data ? JSON.stringify(data) : null, nowIso());
   },
-  list(limit = 50): ActivityEntry[] {
-    return (getDb().prepare("SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map((r) => ({
+  list(orgId: string, limit = 50): ActivityEntry[] {
+    return (getDb().prepare("SELECT * FROM activity_log WHERE org_id = ? ORDER BY created_at DESC LIMIT ?").all(orgId, limit) as Row[]).map((r) => ({
       id: r.id as string,
+      orgId: (r.org_id as string) ?? null,
       level: r.level as ActivityEntry["level"],
       source: r.source as string,
       message: r.message as string,
@@ -298,50 +246,44 @@ export const activityRepo = {
       createdAt: r.created_at as string,
     }));
   },
+  /** Günlük temizlik: 90 günden eski kayıtlar */
+  prune(days = 90): void {
+    getDb().prepare("DELETE FROM activity_log WHERE created_at < ?").run(new Date(Date.now() - days * 86400_000).toISOString());
+  },
 };
 
 export const webhookEventsRepo = {
   add(provider: string, payload: unknown): string {
     const id = randomId("wh");
-    getDb()
-      .prepare("INSERT INTO webhook_events (id, provider, payload, received_at) VALUES (?, ?, ?, ?)")
-      .run(id, provider, JSON.stringify(payload), nowIso());
-    getDb().prepare(
-      "DELETE FROM webhook_events WHERE id IN (SELECT id FROM webhook_events ORDER BY received_at DESC LIMIT -1 OFFSET 1000)",
-    ).run();
+    getDb().prepare("INSERT INTO webhook_events (id, provider, payload, received_at) VALUES (?, ?, ?, ?)").run(id, provider, JSON.stringify(payload), nowIso());
     return id;
   },
   markProcessed(id: string, error?: string | null): void {
     getDb().prepare("UPDATE webhook_events SET processed = 1, error = ? WHERE id = ?").run(error ?? null, id);
   },
   recent(limit = 30): Array<{ id: string; provider: string; processed: number; error: string | null; receivedAt: string }> {
-    return (getDb().prepare("SELECT id, provider, processed, error, received_at FROM webhook_events ORDER BY received_at DESC LIMIT ?").all(limit) as Row[]).map(
-      (r) => ({
-        id: r.id as string,
-        provider: r.provider as string,
-        processed: Number(r.processed),
-        error: (r.error as string) ?? null,
-        receivedAt: r.received_at as string,
-      }),
-    );
+    return (getDb().prepare("SELECT id, provider, processed, error, received_at FROM webhook_events ORDER BY received_at DESC LIMIT ?").all(limit) as Row[]).map((r) => ({
+      id: r.id as string,
+      provider: r.provider as string,
+      processed: Number(r.processed),
+      error: (r.error as string) ?? null,
+      receivedAt: r.received_at as string,
+    }));
+  },
+  prune(days = 14): void {
+    getDb().prepare("DELETE FROM webhook_events WHERE received_at < ?").run(new Date(Date.now() - days * 86400_000).toISOString());
   },
 };
 
 export const analyticsRepo = {
   upsert(channelId: string, date: string, metrics: Record<string, number>): void {
     getDb()
-      .prepare(
-        "INSERT INTO analytics_snapshots (id, channel_id, date, metrics) VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, date) DO UPDATE SET metrics=excluded.metrics",
-      )
+      .prepare("INSERT INTO analytics_snapshots (id, channel_id, date, metrics) VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, date) DO UPDATE SET metrics=excluded.metrics")
       .run(randomId("snap"), channelId, date, JSON.stringify(metrics));
   },
   series(channelId: string, days = 30): AnalyticsSnapshot[] {
     const from = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
-    return (
-      getDb()
-        .prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? AND date >= ? ORDER BY date ASC")
-        .all(channelId, from) as Row[]
-    ).map((r) => ({
+    return (getDb().prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? AND date >= ? ORDER BY date ASC").all(channelId, from) as Row[]).map((r) => ({
       id: r.id as string,
       channelId: r.channel_id as string,
       date: r.date as string,
@@ -349,12 +291,40 @@ export const analyticsRepo = {
     }));
   },
   latest(channelId: string): AnalyticsSnapshot | null {
-    const r = getDb()
-      .prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? ORDER BY date DESC LIMIT 1")
-      .get(channelId) as Row | undefined;
-    return r
-      ? { id: r.id as string, channelId: r.channel_id as string, date: r.date as string, metrics: parseJson<Record<string, number>>(r.metrics, {}) }
-      : null;
+    const r = getDb().prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? ORDER BY date DESC LIMIT 1").get(channelId) as Row | undefined;
+    return r ? { id: r.id as string, channelId: r.channel_id as string, date: r.date as string, metrics: parseJson<Record<string, number>>(r.metrics, {}) } : null;
+  },
+};
+
+export const postMetricsRepo = {
+  set(targetId: string, metrics: Record<string, number>): void {
+    getDb()
+      .prepare("INSERT INTO post_metrics (target_id, metrics, fetched_at) VALUES (?, ?, ?) ON CONFLICT(target_id) DO UPDATE SET metrics=excluded.metrics, fetched_at=excluded.fetched_at")
+      .run(targetId, JSON.stringify(metrics), nowIso());
+  },
+  getMany(targetIds: string[]): Map<string, { metrics: Record<string, number>; fetchedAt: string }> {
+    const map = new Map<string, { metrics: Record<string, number>; fetchedAt: string }>();
+    for (let i = 0; i < targetIds.length; i += 500) {
+      const chunk = targetIds.slice(i, i + 500);
+      if (!chunk.length) continue;
+      const rows = getDb().prepare(`SELECT * FROM post_metrics WHERE target_id IN (${chunk.map(() => "?").join(",")})`).all(...chunk) as Row[];
+      for (const r of rows) map.set(r.target_id as string, { metrics: parseJson<Record<string, number>>(r.metrics, {}), fetchedAt: r.fetched_at as string });
+    }
+    return map;
+  },
+  staleTargets(olderThanHours: number, limit = 50): Array<{ targetId: string; channelId: string; externalId: string; orgId: string }> {
+    const cutoff = new Date(Date.now() - olderThanHours * 3600_000).toISOString();
+    const monthAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
+    return (
+      getDb()
+        .prepare(
+          `SELECT t.id AS target_id, t.channel_id, t.external_id, p.org_id FROM post_targets t JOIN posts p ON p.id = t.post_id
+           LEFT JOIN post_metrics m ON m.target_id = t.id
+           WHERE t.status = 'published' AND t.external_id IS NOT NULL AND t.published_at >= ? AND (m.fetched_at IS NULL OR m.fetched_at < ?)
+           ORDER BY t.published_at DESC LIMIT ?`,
+        )
+        .all(monthAgo, cutoff, limit) as Row[]
+    ).map((r) => ({ targetId: r.target_id as string, channelId: r.channel_id as string, externalId: r.external_id as string, orgId: r.org_id as string }));
   },
 };
 
@@ -367,5 +337,26 @@ export const pollCursorsRepo = {
     getDb()
       .prepare("INSERT INTO poll_cursors (channel_id, cursor, updated_at) VALUES (?, ?, ?) ON CONFLICT(channel_id) DO UPDATE SET cursor=excluded.cursor, updated_at=excluded.updated_at")
       .run(channelId, cursor, nowIso());
+  },
+};
+
+/* ---------------- Kullanım sayaçları (plan kotası) ---------------- */
+
+export const usageRepo = {
+  get(orgId: string, period: string, metric: string): number {
+    const r = getDb().prepare("SELECT value FROM usage_counters WHERE org_id = ? AND period = ? AND metric = ?").get(orgId, period, metric) as Row | undefined;
+    return Number(r?.value ?? 0);
+  },
+  increment(orgId: string, period: string, metric: string, by = 1): number {
+    getDb()
+      .prepare(
+        "INSERT INTO usage_counters (org_id, period, metric, value) VALUES (?, ?, ?, ?) ON CONFLICT(org_id, period, metric) DO UPDATE SET value = value + excluded.value",
+      )
+      .run(orgId, period, metric, by);
+    return this.get(orgId, period, metric);
+  },
+  forOrg(orgId: string, period: string): Record<string, number> {
+    const rows = getDb().prepare("SELECT metric, value FROM usage_counters WHERE org_id = ? AND period = ?").all(orgId, period) as Row[];
+    return Object.fromEntries(rows.map((r) => [r.metric as string, Number(r.value)]));
   },
 };

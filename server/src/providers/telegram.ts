@@ -31,6 +31,8 @@ export const telegramProvider: Provider = {
     inbound: "poll",
     analytics: true,
     maxTextLength: 4096,
+    comments: true,
+    maxMedia: 10,
     mediaNote: "Kanal/grup gönderisi: metin, 1-10 görsel/video (albüm). Bot, kanala yönetici olarak eklenmiş olmalı. DM: kullanıcıların bota yazdığı mesajlar.",
   },
   settingFields: [
@@ -159,6 +161,15 @@ export const telegramProvider: Provider = {
     if (!chatId) return {} as Record<string, number>;
     const count = await call<number>(channel.accessToken, "getChatMemberCount", { query: { chat_id: chatId } });
     return { followers: Number(count ?? 0) };
+  },
+
+  async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
+    const chatId = channel.metadata.chatId as string | null;
+    if (!chatId) throw new ProviderError("Telegram hedef sohbeti tanımlı değil");
+    const r = await call<{ message_id: number }>(channel.accessToken, "sendMessage", {
+      json: { chat_id: chatId, text: text.slice(0, 4096), reply_parameters: { message_id: Number(replyToExternalId ?? parentExternalId), allow_sending_without_reply: true } },
+    });
+    return { externalId: String(r.message_id) };
   },
 
   async healthCheck(channel: Channel) {
