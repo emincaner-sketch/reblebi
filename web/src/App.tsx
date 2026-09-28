@@ -1,91 +1,148 @@
-import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, CalendarDays, Inbox, LayoutDashboard, LogOut, Moon, PlugZap, Settings, Sun, Zap } from "lucide-react";
-import { api, type Dashboard } from "./lib/api";
-import LoginPage from "./pages/Login";
+import { useState, type ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { api, errMsg } from "./lib/api";
+import { useI18n } from "./lib/i18n";
+import { ME_KEY, SessionProvider, useMeQuery } from "./lib/session";
+import { BROWSER_TZ } from "./lib/tz";
+import Shell from "./components/Shell";
+import { AuthLayout, ForgotPage, InvitePage, LoginPage, ResetPasswordPage, SignupPage, VerifyPage } from "./pages/public/AuthPages";
+import { ConsentPage, DataDeletionPage, LandingPage, LegalPage, McpDocsPage, PreviewPage } from "./pages/public/PublicPages";
 import DashboardPage from "./pages/Dashboard";
 import ChannelsPage from "./pages/Channels";
 import PostsPage from "./pages/Posts";
 import ComposerPage from "./pages/Composer";
+import { CampaignDetailPage, CampaignsPage } from "./pages/Campaigns";
 import InboxPage from "./pages/InboxPage";
 import AutomationPage from "./pages/Automation";
 import AnalyticsPage from "./pages/Analytics";
+import MediaPage from "./pages/Media";
+import TeamPage from "./pages/Team";
+import BillingPage from "./pages/Billing";
 import SettingsPage from "./pages/SettingsPage";
-import { useLocalState } from "./components/ui";
+import AdminPage from "./pages/Admin";
 
-interface AuthStatus {
-  needsSetup: boolean;
-  user: { id: string; email: string } | null;
+function FullScreen({ children }: { children: ReactNode }) {
+  return <div className="login">{children}</div>;
+}
+
+/** Hiç çalışma alanı olmayan kullanıcı (hepsinden ayrıldı ya da çıkarıldı) */
+function NoWorkspace() {
+  const { t, locale } = useI18n();
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const create = useMutation({
+    mutationFn: () => api.post("/api/auth/orgs", { name, timezone: BROWSER_TZ, locale }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ME_KEY }),
+  });
+  return (
+    <AuthLayout title={t("Çalışma alanı oluştur")} sub={t("Hiçbir çalışma alanına üye değilsin. Yeni bir alan aç ya da ekibinden davet iste.")}>
+      <div className="field">
+        <label>{t("Ad")}</label>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus />
+      </div>
+      {create.error && <div className="notice notice-err small">{errMsg(create.error)}</div>}
+      <button className="btn btn-primary btn-block" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
+        {t("Oluştur")}
+      </button>
+      <button
+        className="btn btn-ghost btn-block"
+        onClick={async () => {
+          await api.post("/api/auth/logout");
+          qc.clear();
+          window.location.href = "/login";
+        }}
+      >
+        {t("Çıkış")}
+      </button>
+    </AuthLayout>
+  );
+}
+
+function AppArea() {
+  const me = useMeQuery();
+  const loc = useLocation();
+  const { t } = useI18n();
+  if (me.isLoading) return <FullScreen>{t("Yükleniyor…")}</FullScreen>;
+  if (me.isError)
+    return (
+      <FullScreen>
+        <div className="card">{t("API'ye ulaşılamıyor. Sunucu çalışıyor mu? (npm run dev)")}</div>
+      </FullScreen>
+    );
+  const d = me.data!;
+  if (d.needsSetup) return <Navigate to="/signup" replace />;
+  if (!d.user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  if (!d.org) return <NoWorkspace />;
+  return (
+    <SessionProvider me={d}>
+      <Shell>
+        <Routes>
+          <Route index element={<DashboardPage />} />
+          <Route path="channels" element={<ChannelsPage />} />
+          <Route path="posts" element={<PostsPage />} />
+          <Route path="posts/new" element={<ComposerPage key="new" />} />
+          <Route path="posts/:id" element={<ComposerPage />} />
+          <Route path="campaigns" element={<CampaignsPage />} />
+          <Route path="campaigns/:id" element={<CampaignDetailPage />} />
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="inbox/:id" element={<InboxPage />} />
+          <Route path="automation" element={<AutomationPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="media" element={<MediaPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="billing" element={<BillingPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="admin" element={<AdminPage />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
+        </Routes>
+      </Shell>
+    </SessionProvider>
+  );
+}
+
+function Home() {
+  const me = useMeQuery();
+  if (me.data?.needsSetup) return <Navigate to="/signup" replace />;
+  if (me.data?.user) return <Navigate to="/app" replace />;
+  return <LandingPage />;
+}
+
+/** Eski Türkçe yolları yeni /app yollarına taşı */
+function Legacy({ to }: { to: string }) {
+  const { id } = useParams();
+  const loc = useLocation();
+  return <Navigate to={`${to.replace(":id", id ?? "")}${loc.search}`} replace />;
 }
 
 export default function App() {
-  const qc = useQueryClient();
-  const nav = useNavigate();
-  const auth = useQuery({ queryKey: ["auth"], queryFn: () => api.get<AuthStatus>("/api/auth/status"), staleTime: 60_000 });
-  const dash = useQuery({ queryKey: ["dashboard"], queryFn: () => api.get<Dashboard>("/api/dashboard"), enabled: Boolean(auth.data?.user), refetchInterval: 30_000 });
-  const [theme, setTheme] = useLocalState<"dark" | "light">("sp_theme", "dark");
-
-  if (auth.isLoading) return <div className="login">Yükleniyor…</div>;
-  if (auth.isError) return <div className="login"><div className="card">API'ye ulaşılamıyor. Sunucu çalışıyor mu? (<code>npm run dev</code>)</div></div>;
-  if (!auth.data?.user) return <LoginPage needsSetup={Boolean(auth.data?.needsSetup)} onDone={() => qc.invalidateQueries({ queryKey: ["auth"] })} />;
-
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    if (next === "light") document.documentElement.dataset.theme = "light";
-    else delete document.documentElement.dataset.theme;
-  };
-
-  const logout = async () => {
-    await api.post("/api/auth/logout");
-    qc.clear();
-    nav("/");
-    qc.invalidateQueries({ queryKey: ["auth"] });
-  };
-
-  const attention = dash.data?.inbox.attention ?? 0;
-  const unread = dash.data?.inbox.unread ?? 0;
-
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-logo">S</div>
-          <div>
-            <div className="brand-name">SosyalPilot</div>
-            <div className="brand-sub">Sosyal medya otomasyonu</div>
-          </div>
-        </div>
-        <NavLink to="/" end className="nav-link"><LayoutDashboard /> Panel</NavLink>
-        <NavLink to="/kanallar" className="nav-link"><PlugZap /> Kanallar {dash.data && dash.data.channels.problem > 0 && <span className="nav-badge">{dash.data.channels.problem}</span>}</NavLink>
-        <NavLink to="/gonderiler" className="nav-link"><CalendarDays /> Gönderiler & Takvim</NavLink>
-        <NavLink to="/gelen-kutusu" className="nav-link"><Inbox /> Gelen Kutusu {(attention > 0 || unread > 0) && <span className="nav-badge">{attention > 0 ? attention : unread}</span>}</NavLink>
-        <NavLink to="/otomasyon" className="nav-link"><Zap /> Otomasyon</NavLink>
-        <NavLink to="/analitik" className="nav-link"><BarChart3 /> Analitik</NavLink>
-        <NavLink to="/ayarlar" className="nav-link"><Settings /> Ayarlar</NavLink>
-        <div className="sidebar-footer">
-          <div className="row-between">
-            <span className="truncate" title={auth.data.user.email}>{auth.data.user.email}</span>
-            <button className="btn btn-ghost btn-icon" onClick={toggleTheme} title="Tema">{theme === "dark" ? <Sun /> : <Moon />}</button>
-          </div>
-          <button className="btn btn-ghost btn-sm" onClick={logout}><LogOut /> Çıkış</button>
-        </div>
-      </aside>
-      <main className="main">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/kanallar" element={<ChannelsPage />} />
-          <Route path="/gonderiler" element={<PostsPage />} />
-          <Route path="/gonderiler/yeni" element={<ComposerPage />} />
-          <Route path="/gonderiler/:id" element={<ComposerPage />} />
-          <Route path="/gelen-kutusu" element={<InboxPage />} />
-          <Route path="/gelen-kutusu/:id" element={<InboxPage />} />
-          <Route path="/otomasyon" element={<AutomationPage />} />
-          <Route path="/analitik" element={<AnalyticsPage />} />
-          <Route path="/ayarlar" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/pricing" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/forgot" element={<ForgotPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/verify" element={<VerifyPage />} />
+      <Route path="/invite" element={<InvitePage />} />
+      <Route path="/consent" element={<ConsentPage />} />
+      <Route path="/data-deletion" element={<DataDeletionPage />} />
+      <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+      <Route path="/terms" element={<LegalPage kind="terms" />} />
+      <Route path="/preview/:token" element={<PreviewPage />} />
+      <Route path="/docs/mcp" element={<McpDocsPage />} />
+      <Route path="/app/*" element={<AppArea />} />
+      <Route path="/kanallar" element={<Legacy to="/app/channels" />} />
+      <Route path="/gonderiler" element={<Legacy to="/app/posts" />} />
+      <Route path="/gonderiler/yeni" element={<Legacy to="/app/posts/new" />} />
+      <Route path="/gonderiler/:id" element={<Legacy to="/app/posts/:id" />} />
+      <Route path="/gelen-kutusu" element={<Legacy to="/app/inbox" />} />
+      <Route path="/gelen-kutusu/:id" element={<Legacy to="/app/inbox/:id" />} />
+      <Route path="/otomasyon" element={<Legacy to="/app/automation" />} />
+      <Route path="/analitik" element={<Legacy to="/app/analytics" />} />
+      <Route path="/ayarlar" element={<Legacy to="/app/settings" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

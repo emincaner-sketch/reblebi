@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { X } from "lucide-react";
-import { PROVIDER_COLOR, PROVIDER_SHORT, type Channel, type ProviderId } from "../lib/api";
+import { Link } from "react-router-dom";
+import { Lock, X } from "lucide-react";
+import { PROVIDER_COLOR, PROVIDER_NAME, PROVIDER_SHORT, type Channel, type PlanFeature, type PostStatus, type ProviderId, type Quota, type Role } from "../lib/api";
+import { useLabels, useT } from "../lib/i18n";
+import { useOptionalSession } from "../lib/session";
 
 /* ---------------- Toast ---------------- */
 
@@ -23,7 +26,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts">
+      <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.kind}`}>
             {t.text}
@@ -37,6 +40,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 /* ---------------- Modal ---------------- */
 
 export function Modal({ title, onClose, children, footer, large }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; large?: boolean }) {
+  const t = useT();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -44,16 +48,67 @@ export function Modal({ title, onClose, children, footer, large }: { title: Reac
   }, [onClose]);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${large ? "modal-lg" : ""}`}>
+      <div className={`modal ${large ? "modal-lg" : ""}`} role="dialog" aria-modal="true">
         <div className="modal-head">
           <h2>{title}</h2>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Kapat">
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label={t("Kapat")}>
             <X />
           </button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
+    </div>
+  );
+}
+
+/* ---------------- Sayfa iskeleti ---------------- */
+
+export function PageHead({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="page-head">
+      <div>
+        <h1>{title}</h1>
+        {sub && <p>{sub}</p>}
+      </div>
+      {actions && <div className="page-actions">{actions}</div>}
+    </div>
+  );
+}
+
+export function Loading() {
+  return (
+    <div className="card">
+      <div className="skeleton" style={{ width: "40%", marginBottom: 10 }} />
+      <div className="skeleton" style={{ width: "80%", marginBottom: 10 }} />
+      <div className="skeleton" style={{ width: "60%" }} />
+    </div>
+  );
+}
+
+export function ErrorBox({ error }: { error: unknown }) {
+  return <div className="card notice notice-err">{error instanceof Error ? error.message : String(error)}</div>;
+}
+
+/* ---------------- Yetki ---------------- */
+
+/** Rolü yetmiyorsa çocukları göstermez */
+export function Can({ role, children, fallback = null }: { role: Role; children: ReactNode; fallback?: ReactNode }) {
+  const s = useOptionalSession();
+  return <>{s?.can(role) ? children : fallback}</>;
+}
+
+/** Plan özelliği kapalıysa yükseltme notu */
+export function FeatureGate({ feature, has, children }: { feature: PlanFeature; has: boolean | undefined; children: ReactNode }) {
+  const t = useT();
+  if (has !== false) return <>{children}</>;
+  return (
+    <div className="notice notice-warn row">
+      <Lock style={{ width: 16 }} />
+      <span>{t("Bu özellik ({feature}) mevcut planında yok.", { feature })}</span>
+      <Link to="/app/billing" className="btn btn-sm" style={{ marginLeft: "auto" }}>
+        {t("Planları gör")}
+      </Link>
     </div>
   );
 }
@@ -65,7 +120,7 @@ export function ProviderIcon({ provider, size = 26 }: { provider: ProviderId; si
     <span
       className="icon"
       style={{ width: size, height: size, borderRadius: Math.round(size / 4), background: PROVIDER_COLOR[provider], color: "#fff", display: "inline-grid", placeItems: "center", fontWeight: 800, fontSize: Math.round(size * 0.4), flexShrink: 0 }}
-      title={provider}
+      title={PROVIDER_NAME[provider]}
     >
       {PROVIDER_SHORT[provider]}
     </span>
@@ -74,7 +129,7 @@ export function ProviderIcon({ provider, size = 26 }: { provider: ProviderId; si
 
 export function Avatar({ name, url, size = 36 }: { name: string | null | undefined; url?: string | null; size?: number }) {
   const initials = (name ?? "?")
-    .split(" ")
+    .split(/[\s@._-]+/)
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
@@ -98,27 +153,49 @@ export function ChannelChip({ channel }: { channel: Channel }) {
   );
 }
 
+const STATUS_CLS: Record<string, string> = {
+  active: "badge-ok",
+  expired: "badge-err",
+  error: "badge-err",
+  disabled: "",
+  draft: "",
+  pending_approval: "badge-warn",
+  scheduled: "badge-info",
+  publishing: "badge-warn",
+  published: "badge-ok",
+  partial: "badge-warn",
+  failed: "badge-err",
+  cancelled: "",
+  pending: "",
+  skipped: "",
+  open: "badge-ok",
+  closed: "",
+  auto: "badge-accent",
+  manual: "badge-warn",
+  done: "badge-ok",
+  archived: "",
+};
+
+const OTHER_LABEL: Record<string, string> = {
+  active: "Aktif",
+  expired: "Süresi doldu",
+  error: "Hata",
+  disabled: "Devre dışı",
+  pending: "Bekliyor",
+  skipped: "Atlandı",
+  open: "Açık",
+  closed: "Kapalı",
+  auto: "Otomatik",
+  manual: "Manuel",
+  done: "Bitti",
+  archived: "Arşiv",
+};
+
 export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { cls: string; label: string }> = {
-    active: { cls: "badge-ok", label: "Aktif" },
-    expired: { cls: "badge-err", label: "Süresi doldu" },
-    error: { cls: "badge-err", label: "Hata" },
-    disabled: { cls: "", label: "Devre dışı" },
-    draft: { cls: "", label: "Taslak" },
-    scheduled: { cls: "badge-info", label: "Planlandı" },
-    publishing: { cls: "badge-warn", label: "Yayınlanıyor" },
-    published: { cls: "badge-ok", label: "Yayınlandı" },
-    partial: { cls: "badge-warn", label: "Kısmen" },
-    failed: { cls: "badge-err", label: "Başarısız" },
-    pending: { cls: "", label: "Bekliyor" },
-    skipped: { cls: "", label: "Atlandı" },
-    open: { cls: "badge-ok", label: "Açık" },
-    closed: { cls: "", label: "Kapalı" },
-    auto: { cls: "badge-accent", label: "Otomatik" },
-    manual: { cls: "badge-warn", label: "Manuel" },
-  };
-  const m = map[status] ?? { cls: "", label: status };
-  return <span className={`badge ${m.cls}`}>{m.label}</span>;
+  const t = useT();
+  const L = useLabels();
+  const label = OTHER_LABEL[status] ? t(OTHER_LABEL[status]) : L.statuses.includes(status as PostStatus) ? L.status(status as PostStatus) : status;
+  return <span className={`badge ${STATUS_CLS[status] ?? ""}`}>{label}</span>;
 }
 
 export function Empty({ icon, title, text, action }: { icon?: ReactNode; title: string; text?: string; action?: ReactNode }) {
@@ -142,7 +219,28 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
   );
 }
 
+export function UsageBar({ label, q, unit = "" }: { label: string; q: Quota; unit?: string }) {
+  const t = useT();
+  const pct = q.limit ? Math.min(100, Math.round((q.used / q.limit) * 100)) : 0;
+  const color = pct >= 90 ? "var(--err)" : pct >= 70 ? "var(--warn)" : "var(--accent)";
+  return (
+    <div className="usage">
+      <div className="row-between small">
+        <span>{label}</span>
+        <span className="muted">
+          {q.used}
+          {unit} / {q.limit === null ? t("sınırsız") : `${q.limit}${unit}`}
+        </span>
+      </div>
+      <div className="bar">
+        <div style={{ width: q.limit === null ? "4%" : `${pct}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
 export function Sparkline({ values, color = "var(--accent)" }: { values: number[]; color?: string }) {
+  const t = useT();
   const path = useMemo(() => {
     if (values.length < 2) return "";
     const min = Math.min(...values);
@@ -152,7 +250,7 @@ export function Sparkline({ values, color = "var(--accent)" }: { values: number[
     const span = max - min || 1;
     return values.map((v, i) => `${i === 0 ? "M" : "L"}${(i / (values.length - 1)) * w},${h - ((v - min) / span) * (h - 6) - 3}`).join(" ");
   }, [values]);
-  if (!path) return <div className="muted small">Yeterli veri yok</div>;
+  if (!path) return <div className="muted small">{t("Yeterli veri yok")}</div>;
   return (
     <svg className="spark" viewBox="0 0 200 40" preserveAspectRatio="none">
       <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
@@ -183,17 +281,60 @@ export function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
   return [v, set];
 }
 
-export function Copyable({ text }: { text: string }) {
+export function Copyable({ text, display }: { text: string; display?: string }) {
   const toast = useToast();
+  const t = useT();
   return (
     <code
       className="copy"
-      title="Kopyala"
+      title={t("Kopyala")}
+      role="button"
+      tabIndex={0}
       onClick={() => {
-        navigator.clipboard?.writeText(text).then(() => toast("Kopyalandı", "ok"));
+        navigator.clipboard?.writeText(text).then(() => toast(t("Kopyalandı"), "ok"));
       }}
     >
-      {text}
+      {display ?? text}
     </code>
   );
 }
+
+/** Onay gerektiren tehlikeli işlem: kullanıcı adı birebir yazmalı */
+export function ConfirmTyped({ title, text, expected, danger, onConfirm, onClose, busy }: { title: string; text: string; expected: string; danger: string; onConfirm: () => void; onClose: () => void; busy?: boolean }) {
+  const t = useT();
+  const [v, setV] = useState("");
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            {t("Vazgeç")}
+          </button>
+          <button className="btn btn-danger" disabled={v !== expected || busy} onClick={onConfirm}>
+            {danger}
+          </button>
+        </>
+      }
+    >
+      <div className="form">
+        <p>{text}</p>
+        <div className="field">
+          <label>{t("Onaylamak için yaz: {x}", { x: expected })}</label>
+          <input className="input" value={v} onChange={(e) => setV(e.target.value)} autoFocus />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export const TIMEZONES: string[] = (() => {
+  try {
+    const list = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone");
+    if (list?.length) return list;
+  } catch {
+    /* yoksay */
+  }
+  return ["Europe/Istanbul", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles", "Asia/Dubai", "Asia/Tokyo", "UTC"];
+})();
