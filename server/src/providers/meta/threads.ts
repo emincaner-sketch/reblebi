@@ -85,7 +85,7 @@ export const threadsProvider: Provider = {
   isConfigured: () => Boolean(config.threads.appId && config.threads.appSecret),
 
   oauthStart(redirectUri, state) {
-    const u = new URL("https://threads.net/oauth/authorize");
+    const u = new URL("https://www.threads.com/oauth/authorize");
     u.searchParams.set("client_id", config.threads.appId);
     u.searchParams.set("redirect_uri", redirectUri);
     u.searchParams.set("scope", SCOPES.join(","));
