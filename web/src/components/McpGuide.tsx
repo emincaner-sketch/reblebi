@@ -171,8 +171,8 @@ export function McpGuide({ mcpUrl, appName, showKeyHint = true }: { mcpUrl: stri
         <strong>{t("Güvenlik")}</strong>
         <ul className="bullets small" style={{ marginTop: 6 }}>
           <li>{t("AI yalnızca izin verdiğin çalışma alanını ve senin rolünün yapabildiklerini yapabilir.")}</li>
-          <li>{t("Onay modu açıksa AI'nın hazırladığı gönderiler yayından önce senin onayına düşer (Ayarlar > Paylaşım).")}</li>
-          <li>{t("Bağlantıyı istediğin an Ayarlar > Bağlı AI uygulamaları bölümünden kaldırabilirsin.")}</li>
+          <li>{t("Onay modu açıksa AI'nın hazırladığı gönderiler yayından önce senin onayına düşer (Ayarlar > Yayın).")}</li>
+          <li>{t("Bağlantıyı istediğin an Ayarlar > Bağlantılar sekmesinden kaldırabilirsin.")}</li>
         </ul>
       </div>
     </div>

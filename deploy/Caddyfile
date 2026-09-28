@@ -1,0 +1,14 @@
+# DOMAIN değeri .env dosyasından gelir (örnek: panel.alanadin.com).
+# Caddy sertifikayı Let's Encrypt'ten kendisi alır ve yeniler.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Panel, API, MCP (/mcp), OAuth ve webhook'lar aynı uygulamadan sunulur
+	reverse_proxy app:4100
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}

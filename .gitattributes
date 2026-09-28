@@ -1,0 +1,8 @@
+# Depoda ve çalışma kopyasında LF satır sonu (Docker imajı ve Linux sunucu için)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary
+*.db-shm binary
+*.db-wal binary

@@ -81,8 +81,14 @@ if ($Uretim) {
         Read-Host "`n  Kapatmak icin Enter"
         exit 1
     }
+    # Uretimde panel API ile ayni adresten sunulur: APP_URL = PUBLIC_URL
+    # (.env'deki APP_URL gelistirme icin 5173'u gosterebilir; OAuth donusu ve MCP onay ekrani oraya gitmesin)
+    $publicUrl = "http://localhost:4100"
+    if ($envContent -match "(?m)^PUBLIC_URL=(\S+)") { $publicUrl = $Matches[1].Trim() }
+    $env:APP_URL = $publicUrl
     Write-Host ""
-    Write-Host "  Panel: http://localhost:4100" -ForegroundColor Green
+    Write-Host "  Panel: $publicUrl" -ForegroundColor Green
+    Write-Host "  MCP:   $publicUrl/mcp" -ForegroundColor DarkGray
     Write-Host "  Durdurmak icin Ctrl+C" -ForegroundColor DarkGray
     Write-Host ""
     npm start

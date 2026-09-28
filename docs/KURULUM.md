@@ -1,5 +1,7 @@
 # Kurulum rehberi
 
+Bu belge platform başına geliştirici uygulaması açmayı anlatır. Sunucuya kurulum, alan adı, e-posta ve satışa açma adımları için: [YAYIN.md](YAYIN.md).
+
 Sırayla git. Her platform bağımsızdır: sadece kullanacaklarını yapılandır, gerisini boş bırak. Boş bırakılanlar panelde ".env eksik" görünür ve bağlanamaz.
 
 ---
@@ -29,7 +31,7 @@ PUBLIC_URL=https://xxx.trycloudflare.com
 
 ### Sunucuda
 
-Alan adını Caddy/Nginx ile 4100 portuna yönlendir, `PUBLIC_URL=https://panel.alanadin.com` yaz.
+Hazır Docker + Caddy kurulumu var: alan adını yaz, `docker compose up -d --build` de, https kendiliğinden gelir. Adım adım: [YAYIN.md](YAYIN.md).
 
 ### Diğer temel değişkenler
 
@@ -37,9 +39,11 @@ Alan adını Caddy/Nginx ile 4100 portuna yönlendir, `PUBLIC_URL=https://panel.
 API_PORT=4100
 APP_SECRET=<openssl rand -hex 32 çıktısı>   # token şifreleme anahtarı: DEĞİŞTİRİRSEN tüm kanalları yeniden bağlaman gerekir
 TZ=Europe/Istanbul
-ANTHROPIC_API_KEY=sk-ant-...                # AI içerik + AI DM yanıtı için
+ANTHROPIC_API_KEY=sk-ant-...                # AI içerik + AI DM yanıtı için (ya da bölüm 8'deki diğer sağlayıcılar)
 BRAND_MEMORY_DIR=../sistemler/marka-hafizasi/hafiza   # varsa marka dosyaların
 ```
+
+Tüm değişkenlerin açıklamalı listesi `.env.example` dosyasında.
 
 ---
 
@@ -86,6 +90,19 @@ https://<PUBLIC_URL>/api/oauth/meta/callback
 - **Verify Token:** `.env` içindeki `META_WEBHOOK_VERIFY_TOKEN`
 
 Panel > Ayarlar > Sistem sekmesinde bu iki değer kopyalanabilir halde durur.
+
+### 1.4b Veri silme ve yetki kaldırma (canlıya çıkış için şart)
+
+Meta, App Review'dan önce bu adresleri ister:
+
+| Ayar | Adres |
+|---|---|
+| App Settings > Basic > **Data Deletion Request URL** | `https://<PUBLIC_URL>/webhooks/meta/data-deletion` |
+| Facebook Login for Business > Settings > **Deauthorize Callback URL** | `https://<PUBLIC_URL>/webhooks/meta/deauthorize` |
+| App Settings > Basic > **Privacy Policy URL** | `https://<PUBLIC_URL>/privacy` |
+| App Settings > Basic > **Terms of Service URL** | `https://<PUBLIC_URL>/terms` |
+
+Veri silme isteği `signed_request` ile doğrulanır; kullanıcıya bir onay kodu ve durum sayfası (`/data-deletion`) döner.
 
 ### 1.5 Instagram hesabı
 
@@ -202,35 +219,47 @@ Bota özel mesaj yazan kullanıcılar gelen kutusunda görünür.
 
 ---
 
-## 8. AI (Claude)
+## 8. AI sağlayıcısı
+
+Paneldeki AI özellikleri (içerik üretimi, kampanya planı, AI DM yanıtı) için platform genelinde bir sağlayıcı seç:
 
 ```
+AI_PROVIDER=anthropic        # anthropic | openai | xai | gemini | openrouter | custom
+AI_MODEL=                    # boşsa sağlayıcının varsayılanı
 ANTHROPIC_API_KEY=sk-ant-...
-AI_MODEL=claude-opus-5
+# OPENAI_API_KEY=  XAI_API_KEY=  GEMINI_API_KEY=  OPENROUTER_API_KEY=
+# AI_CUSTOM_BASE_URL=  AI_CUSTOM_API_KEY=   (OpenAI uyumlu herhangi bir uç nokta)
 ```
 
-Anahtar [console.anthropic.com](https://console.anthropic.com) → API Keys'ten alınır. Anahtar yoksa panel çalışır, sadece AI düğmeleri kapalıdır.
+| Sağlayıcı | Anahtar nereden | Varsayılan model |
+|---|---|---|
+| Anthropic (Claude) | console.anthropic.com | `claude-opus-5` |
+| OpenAI | platform.openai.com | `gpt-5` |
+| xAI (Grok) | console.x.ai | `grok-4` |
+| Google Gemini | aistudio.google.com | `gemini-2.5-pro` |
+| OpenRouter | openrouter.ai | `anthropic/claude-opus-5` |
+
+Anahtar yoksa panel çalışır, sadece AI düğmeleri kapalıdır. Pro ve üstü plandaki müşteriler **Ayarlar > AI** sekmesinden kendi anahtarlarını girebilir; o zaman senin kotan harcanmaz. **Ayarlar > AI > Bağlantıyı test et** ile anahtarın çalıştığını doğrula.
 
 **Marka hafızası:** `BRAND_MEMORY_DIR` bir klasörü gösterirse (`01-marka-kimlik.md`, `02-ses.md`, `03-kararlar.md`) içerikleri her AI üretiminin sistem promptuna eklenir. Dosyalar doldurulmamış şablon halindeyse atlanır. Alternatif olarak Panel > Ayarlar > Marka sekmesinden doldurabilirsin; ikisi birleştirilir.
 
 ---
 
-## 9. MCP (Claude Code / Desktop / Cursor)
+## 9. MCP: Claude, ChatGPT, Gemini, Grok ile bağlanma
 
-1. Panel > Ayarlar > **API / MCP** → anahtar oluştur (`sp_...`), bir kere gösterilir.
-2. `.env`'e ekle:
+SosyalPilot uzak bir MCP sunucusudur: adres `https://<PUBLIC_URL>/mcp`. AI uygulamasına bu adresi eklemek yeterli; bağlanırken SosyalPilot giriş ve onay ekranı açılır (OAuth 2.1). Ayrıntılı, istemci başına rehber panelde **Ayarlar > API / MCP** ve herkese açık `/docs/mcp` sayfasında.
 
-```
-SOSYALPILOT_API_KEY=sp_...
-```
-
-3. Claude Code'u proje klasöründe aç; kökteki `.mcp.json` otomatik okunur.
-
-Elle kayıt:
+Claude Code (terminal):
 
 ```bash
-claude mcp add sosyalpilot -e SOSYALPILOT_API_URL=http://localhost:4100 -e SOSYALPILOT_API_KEY=sp_... -- npm run mcp --prefix "C:/Users/Mehmet Em/Desktop/Projeler/sosyalpilot/server" --silent
+claude mcp add --transport http sosyalpilot https://<PUBLIC_URL>/mcp
 ```
+
+Tarayıcısız ortamlar için API anahtarı: Panel > Ayarlar > **API / MCP** → anahtar oluştur (`sp_...`, bir kere gösterilir), istemcide `Authorization: Bearer sp_...` başlığı olarak ver.
+
+**Yerel geliştirme:** proje kökündeki `.mcp.json` stdio köprüsünü kullanır (`npm run mcp`); `.env`'e `SOSYALPILOT_API_KEY=sp_...` ekleyip Claude Code'u proje klasöründe açman yeterli. Köprü istekleri `http://localhost:4100/mcp` adresine iletir.
+
+> Claude.ai, ChatGPT ve Gemini gibi bulut istemcileri `localhost`'a erişemez. Onlarla denemek için sunucuyu https bir adrese koy ya da tünel kullan (bölüm 0).
 
 ---
 
@@ -239,6 +268,9 @@ claude mcp add sosyalpilot -e SOSYALPILOT_API_URL=http://localhost:4100 -e SOSYA
 | Kontrol | Nerede |
 |---|---|
 | PUBLIC_URL https mi | Ayarlar > Sistem (kırmızı uyarı yoksa tamam) |
+| E-posta gidiyor mu | Çıkış yap > "Şifremi unuttum" (SMTP yoksa bağlantı sunucu günlüğüne yazılır) |
+| AI anahtarı çalışıyor mu | Ayarlar > AI > Bağlantıyı test et |
+| MCP bağlanıyor mu | Bir AI uygulamasına `/mcp` adresini ekle; Ayarlar > Bağlantılar'da görünmeli |
 | Platform anahtarları tanımlı mı | Ayarlar > Sistem > Platform yapılandırması |
 | Kanal token'ı geçerli mi | Kanallar > kanal kartındaki yenile simgesi |
 | Webhook geliyor mu | Ayarlar > Sistem > Son webhook olayları |

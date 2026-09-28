@@ -67,7 +67,7 @@ export function ConsentPage() {
           <li>{t("Gelen kutusunu okuyup yanıt verebilir")}</li>
           <li>{t("Oto-yanıt kuralları ve AI içerik üretimini kullanabilir")}</li>
         </ul>
-        <div className="muted" style={{ marginTop: 6 }}>{t("Rolünün izin vermediği hiçbir işlemi yapamaz. Erişimi istediğin zaman Ayarlar > Bağlı AI uygulamaları'ndan kaldırabilirsin.")}</div>
+        <div className="muted" style={{ marginTop: 6 }}>{t("Rolünün izin vermediği hiçbir işlemi yapamaz. Erişimi istediğin zaman Ayarlar > Bağlantılar sekmesinden kaldırabilirsin.")}</div>
       </div>
       {allowedOrgs.length === 0 ? (
         <div className="notice notice-warn">{t("Hiçbir çalışma alanının planında MCP erişimi yok.")}</div>

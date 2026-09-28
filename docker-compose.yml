@@ -1,0 +1,42 @@
+# Sunucuda kurulum (Ubuntu/Debian + Docker):
+#   1) .env.example dosyasını .env olarak kopyala; DOMAIN, PUBLIC_URL, APP_SECRET ve e-posta ayarlarını doldur
+#   2) Alan adının A kaydını sunucunun IP adresine yönlendir (80 ve 443 portları açık olmalı)
+#   3) docker compose up -d --build
+# Caddy, Let's Encrypt sertifikasını kendisi alır ve yeniler.
+
+services:
+  app:
+    build: .
+    image: sosyalpilot:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      API_PORT: "4100"
+      DATA_DIR: /data
+    volumes:
+      - sosyalpilot-data:/data
+    expose:
+      - "4100"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN .env icinde tanimli olmali}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  sosyalpilot-data:
+  caddy-data:
+  caddy-config:
