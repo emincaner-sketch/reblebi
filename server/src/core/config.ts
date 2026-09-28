@@ -29,15 +29,17 @@ function resolveFromRoot(p: string): string {
 const dataDir = resolveFromRoot(env("DATA_DIR", "./data"));
 // Not: genel PORT degiskeni bilerek okunmaz (onizleme araclari onu web sunucusuna verir)
 const port = envInt("API_PORT", 4100);
+// PUBLIC_URL verilmezse: Railway'in atadığı alan adı, o da yoksa yerel adres
+const defaultPublicUrl = env("RAILWAY_PUBLIC_DOMAIN") ? "https://" + env("RAILWAY_PUBLIC_DOMAIN") : "http://localhost:" + port;
 
 export type SignupMode = "open" | "invite" | "closed";
 
 export const config = {
   appName: env("APP_NAME", "SosyalPilot"),
   port,
-  publicUrl: env("PUBLIC_URL", "http://localhost:" + port).replace(/\/$/, ""),
+  publicUrl: env("PUBLIC_URL", defaultPublicUrl).replace(/\/$/, ""),
   /** Geliştirmede panel ayrı porttan (5173) çalışır; e-posta linkleri buraya gider */
-  appUrl: env("APP_URL", env("PUBLIC_URL", "http://localhost:" + port)).replace(/\/$/, ""),
+  appUrl: env("APP_URL", env("PUBLIC_URL", defaultPublicUrl)).replace(/\/$/, ""),
   appSecret: env("APP_SECRET", "sosyalpilot-dev-secret-degistir-bunu-lutfen-32"),
   dataDir,
   mediaDir: path.join(dataDir, "media"),

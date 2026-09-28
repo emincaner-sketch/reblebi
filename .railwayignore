@@ -1,0 +1,6 @@
+.claude
+data-test
+data
+.env
+.env.*
+!.env.example

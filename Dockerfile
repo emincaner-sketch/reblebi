@@ -32,7 +32,9 @@ COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/web/dist ./web/dist
 RUN mkdir -p /data && chown node:node /data
 USER node
-VOLUME ["/data"]
+# /data kalıcı disk olarak bağlanmalı: docker-compose'da adlandırılmış birim, Railway'de Volume.
+# (Dockerfile VOLUME komutu bilerek yok; Railway desteklemiyor.)
+# Railway'de disk root sahipli bağlandığı için servise RAILWAY_RUN_UID=0 değişkeni verilir.
 EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||4100)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
