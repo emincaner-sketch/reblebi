@@ -15,6 +15,46 @@ Bu rehber SosyalPilot'u bir sunucuya kurup başka kullanıcılara (müşterilere
 
 ---
 
+## 1b. Railway ile kurulum (sunucu yönetmeden)
+
+Railway, `Dockerfile` ve `railway.json` dosyalarını okuyup uygulamayı kendisi derler ve https'li bir adres verir. Sunucu, Docker ya da Caddy kurman gerekmez.
+
+**Kurulu olan (sosyalpilot projesi):**
+
+| Öğe | Değer |
+|---|---|
+| Servis | `sosyalpilot` (Dockerfile ile derlenir, sağlık kontrolü `/api/health`) |
+| Kalıcı disk (Volume) | `/data`: veritabanı, medya, günlük yedekler |
+| Adres | `https://sosyalpilot-production.up.railway.app` (PUBLIC_URL buradan otomatik alınır) |
+| Değişkenler | `APP_SECRET` (rastgele), `PORT=4100`, `RAILWAY_RUN_UID=0`, `TZ=Europe/Istanbul` |
+
+`RAILWAY_RUN_UID=0` silinmemeli: imaj root olmayan kullanıcıyla çalışır, Railway diski root sahipli bağlar; bu değişken olmadan uygulama veritabanını yazamaz.
+
+**Günlük işler** (proje klasöründe):
+
+```bash
+railway up                 # yeni sürümü yükle ve yayınla
+railway logs               # uygulama günlüğü
+railway variable set SMTP_HOST=smtp.ornek.com   # değişken ekle (yeniden başlatır)
+railway open               # Railway panelini aç
+```
+
+**Yedek indirme:**
+
+```bash
+railway volume files list /backups
+railway volume files download /backups/<dosya>.db ./yedek.db
+```
+
+**Kendi alan adın:** `railway domain panel.markan.com` komutu gereken DNS kaydını verir. Alan adı bağlandıktan sonra `PUBLIC_URL` ve `APP_URL` değişkenlerini `https://panel.markan.com` yap.
+
+**Notlar:**
+- Kalıcı diskli servislerde her yeni sürümde birkaç saniyelik kesinti olur (Railway aynı diski iki kopyaya bağlayamaz). Tek kopya çalışır; ölçekleme (replica) kullanılmaz.
+- Railway `railway.json` dosyasını 2026-12-01'e kadar destekliyor; sonrasında `railway config migrate` ile yeni biçime geçilmeli.
+- Ücret kullanıma göre: deneme kredisi bittikten sonra Hobby planı gerekir.
+
+---
+
 ## 2. Sunucuya kurulum (Docker + otomatik HTTPS)
 
 ### 2.1 Alan adı
