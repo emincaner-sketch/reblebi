@@ -40,8 +40,8 @@ export function SessionProvider({ me, children }: { me: Me; children: ReactNode 
   const switchOrg = useCallback(
     async (id: string) => {
       await api.post("/api/auth/switch-org", { orgId: id });
-      qc.clear();
-      await qc.refetchQueries({ queryKey: ME_KEY });
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== ME_KEY[0] });
+      await qc.invalidateQueries({ queryKey: ME_KEY });
     },
     [qc],
   );
