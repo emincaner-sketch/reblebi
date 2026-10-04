@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigationType, useParams } from "react-router-dom";
 import { useI18n } from "./lib/i18n";
 import { useMeQuery } from "./lib/session";
 import { ForgotPage, InvitePage, LoginPage, ResetPasswordPage, SignupPage, VerifyPage } from "./pages/public/AuthPages";
@@ -35,6 +35,23 @@ function Private() {
   return <Outlet />;
 }
 
+/**
+ * Bağlantıyla yeni sayfaya geçince en üstten başla (ör. altbilgideki "Gizlilik politikası").
+ * Geri/ileri tuşunda (POP) tarayıcı eski konumu korur; adreste #bölüm varsa oraya gidilir.
+ * Yalnızca yol değişince çalışır: aynı sayfadaki süzgeç (?network=) değişiklikleri kaydırmaz.
+ */
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+  const nav = useNavigationType();
+  useEffect(() => {
+    if (nav === "POP") return;
+    const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+    if (target) target.scrollIntoView();
+    else window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [pathname, hash, nav]);
+  return null;
+}
+
 /** Eski Türkçe yolları yeni /app yollarına taşı */
 function Legacy({ to }: { to: string }) {
   const { id } = useParams();
@@ -49,55 +66,58 @@ function Legacy({ to }: { to: string }) {
 export default function App() {
   const both = (key: keyof typeof PAGE_PATHS) => [PAGE_PATHS[key].tr, PAGE_PATHS[key].en];
   return (
-    <Routes>
-      {both("home").map((p) => (
-        <Route key={p} path={p} element={<Home />} />
-      ))}
-      {both("pricing").map((p) => (
-        <Route key={p} path={p} element={<PricingPage />} />
-      ))}
-      {both("mcp").map((p) => (
-        <Route key={p} path={p} element={<McpDocsPage />} />
-      ))}
-      {both("privacy").map((p) => (
-        <Route key={p} path={p} element={<LegalPage kind="privacy" />} />
-      ))}
-      {both("terms").map((p) => (
-        <Route key={p} path={p} element={<LegalPage kind="terms" />} />
-      ))}
-      {both("deletion").map((p) => (
-        <Route key={p} path={p} element={<DataDeletionPage />} />
-      ))}
-      <Route path="/pricing" element={<Navigate to={PAGE_PATHS.pricing.tr} replace />} />
+    <>
+      <ScrollToTop />
+      <Routes>
+        {both("home").map((p) => (
+          <Route key={p} path={p} element={<Home />} />
+        ))}
+        {both("pricing").map((p) => (
+          <Route key={p} path={p} element={<PricingPage />} />
+        ))}
+        {both("mcp").map((p) => (
+          <Route key={p} path={p} element={<McpDocsPage />} />
+        ))}
+        {both("privacy").map((p) => (
+          <Route key={p} path={p} element={<LegalPage kind="privacy" />} />
+        ))}
+        {both("terms").map((p) => (
+          <Route key={p} path={p} element={<LegalPage kind="terms" />} />
+        ))}
+        {both("deletion").map((p) => (
+          <Route key={p} path={p} element={<DataDeletionPage />} />
+        ))}
+        <Route path="/pricing" element={<Navigate to={PAGE_PATHS.pricing.tr} replace />} />
 
-      <Route element={<Private />}>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/forgot" element={<ForgotPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/verify" element={<VerifyPage />} />
-        <Route path="/invite" element={<InvitePage />} />
-        <Route path="/consent" element={<ConsentPage />} />
-        <Route path="/preview/:token" element={<PreviewPage />} />
-        <Route
-          path="/app/*"
-          element={
-            <Suspense fallback={<Loading />}>
-              <AppArea />
-            </Suspense>
-          }
-        />
-        <Route path="/kanallar" element={<Legacy to="/app/channels" />} />
-        <Route path="/gonderiler" element={<Legacy to="/app/posts" />} />
-        <Route path="/gonderiler/yeni" element={<Legacy to="/app/posts/new" />} />
-        <Route path="/gonderiler/:id" element={<Legacy to="/app/posts/:id" />} />
-        <Route path="/gelen-kutusu" element={<Legacy to="/app/inbox" />} />
-        <Route path="/gelen-kutusu/:id" element={<Legacy to="/app/inbox/:id" />} />
-        <Route path="/otomasyon" element={<Legacy to="/app/automation" />} />
-        <Route path="/analitik" element={<Legacy to="/app/analytics" />} />
-        <Route path="/ayarlar" element={<Legacy to="/app/settings" />} />
-      </Route>
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+        <Route element={<Private />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot" element={<ForgotPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify" element={<VerifyPage />} />
+          <Route path="/invite" element={<InvitePage />} />
+          <Route path="/consent" element={<ConsentPage />} />
+          <Route path="/preview/:token" element={<PreviewPage />} />
+          <Route
+            path="/app/*"
+            element={
+              <Suspense fallback={<Loading />}>
+                <AppArea />
+              </Suspense>
+            }
+          />
+          <Route path="/kanallar" element={<Legacy to="/app/channels" />} />
+          <Route path="/gonderiler" element={<Legacy to="/app/posts" />} />
+          <Route path="/gonderiler/yeni" element={<Legacy to="/app/posts/new" />} />
+          <Route path="/gonderiler/:id" element={<Legacy to="/app/posts/:id" />} />
+          <Route path="/gelen-kutusu" element={<Legacy to="/app/inbox" />} />
+          <Route path="/gelen-kutusu/:id" element={<Legacy to="/app/inbox/:id" />} />
+          <Route path="/otomasyon" element={<Legacy to="/app/automation" />} />
+          <Route path="/analitik" element={<Legacy to="/app/analytics" />} />
+          <Route path="/ayarlar" element={<Legacy to="/app/settings" />} />
+        </Route>
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </>
   );
 }
