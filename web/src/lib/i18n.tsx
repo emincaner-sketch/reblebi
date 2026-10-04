@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { EN } from "./en";
 import { setApiLocale, type Locale, type PostKind, type PostStatus, type Role } from "./api";
+import { localeFromPath } from "../seo/routes";
 
 /**
  * Arayüz metinleri Türkçe yazılır (kaynak dil); İngilizce karşılıkları EN sözlüğündedir.
@@ -17,6 +19,7 @@ interface I18n {
 const Ctx = createContext<I18n>({ locale: "tr", setLocale: () => {}, t: (s) => s, intl: "tr-TR" });
 
 function detect(): Locale {
+  if (typeof window === "undefined") return "tr";
   try {
     const saved = localStorage.getItem("sp_locale");
     if (saved === "en" || saved === "tr") return saved;
@@ -26,8 +29,14 @@ function detect(): Locale {
   return navigator.language?.toLowerCase().startsWith("tr") ? "tr" : "en";
 }
 
+/**
+ * Router içinde kullanılır. Herkese açık içerik sayfalarında (/, /en, /fiyatlar...) dil URL'den gelir;
+ * böylece ön-render edilen HTML ile tarayıcıdaki ilk çizim aynı olur. Diğer sayfalarda kayıtlı tercih geçerlidir.
+ */
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(detect);
+  const { pathname } = useLocation();
+  const [preferred, setLocaleState] = useState<Locale>(detect);
+  const locale = localeFromPath(pathname) ?? preferred;
   setApiLocale(locale);
 
   useEffect(() => {

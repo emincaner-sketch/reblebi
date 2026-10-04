@@ -27,6 +27,18 @@ interface WebhookBody {
     changes?: Array<{
       field?: string;
       value?: {
+        /* Yorumlar: Instagram "comments" ve Sayfa "feed" (item=comment) */
+        id?: string;
+        text?: string;
+        message?: string;
+        from?: { id?: string; username?: string; name?: string };
+        media?: { id?: string; media_product_type?: string };
+        parent_id?: string;
+        item?: string;
+        verb?: string;
+        comment_id?: string;
+        post_id?: string;
+        created_time?: number;
         messaging_product?: string;
         metadata?: { phone_number_id?: string; display_phone_number?: string };
         contacts?: Array<{ wa_id: string; profile?: { name?: string } }>;
@@ -53,13 +65,61 @@ function attachmentsToText(atts: Array<{ type: string; payload?: { url?: string;
   return atts.map((a) => `[${a.type}${a.payload?.title ? ": " + a.payload.title : ""}]`).join(" ");
 }
 
-/** Meta webhook gövdesini ortak gelen-mesaj olaylarına çevirir (IG DM, Messenger, WhatsApp) */
+type Entry = NonNullable<WebhookBody["entry"]>[number];
+
+/**
+ * Gönderi yorumları: her (gönderi, yorumcu) çifti gelen kutusunda bir konu olur ("c:<gönderi>:<yorumcu>").
+ * Hesabın kendi yanıtları (from = hesap) ve silme/düzenleme olayları atlanır.
+ */
+function parseCommentChanges(provider: ProviderId, entry: Entry): ParsedMetaEvent[] {
+  const out: ParsedMetaEvent[] = [];
+  for (const ch of entry.changes ?? []) {
+    const v = ch.value;
+    if (!v) continue;
+    if (provider === "instagram" && ch.field === "comments") {
+      const from = v.from?.id;
+      const mediaId = v.media?.id;
+      if (!from || !mediaId || !v.id || from === entry.id) continue;
+      out.push({
+        provider,
+        kind: "comment",
+        accountExternalId: entry.id,
+        conversationExternalId: `c:${mediaId}:${from}`,
+        participantId: from,
+        participantName: v.from?.username ? `@${v.from.username}` : null,
+        externalMessageId: v.id,
+        text: v.text ?? "",
+        metadata: { kind: "comment", mediaId, commentId: v.id, parentId: v.parent_id ?? null, productType: v.media?.media_product_type ?? null },
+        receivedAt: entry.time ? new Date(entry.time * 1000).toISOString() : undefined,
+      });
+    } else if (provider === "facebook" && ch.field === "feed" && v.item === "comment" && v.verb === "add") {
+      const from = v.from?.id;
+      if (!from || !v.comment_id || !v.post_id || from === entry.id) continue;
+      out.push({
+        provider,
+        kind: "comment",
+        accountExternalId: entry.id,
+        conversationExternalId: `c:${v.post_id}:${from}`,
+        participantId: from,
+        participantName: v.from?.name ?? null,
+        externalMessageId: v.comment_id,
+        text: v.message ?? "",
+        metadata: { kind: "comment", mediaId: v.post_id, commentId: v.comment_id, parentId: v.parent_id && v.parent_id !== v.post_id ? v.parent_id : null },
+        receivedAt: v.created_time ? new Date(v.created_time * 1000).toISOString() : undefined,
+      });
+    }
+  }
+  return out;
+}
+
+/** Meta webhook gövdesini ortak gelen-mesaj olaylarına çevirir (IG DM, Messenger, WhatsApp, IG/FB yorumları) */
 export function parseMetaWebhook(body: WebhookBody): ParsedMetaEvent[] {
   const out: ParsedMetaEvent[] = [];
   const object = body.object;
   for (const entry of body.entry ?? []) {
     if (object === "instagram" || object === "page") {
       const provider: ProviderId = object === "instagram" ? "instagram" : "facebook";
+      out.push(...parseCommentChanges(provider, entry));
       for (const m of entry.messaging ?? []) {
         if (!m.message || m.message.is_echo || !m.sender?.id) continue;
         const text = m.message.text ?? attachmentsToText(m.message.attachments);

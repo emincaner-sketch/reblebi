@@ -79,7 +79,15 @@ export default function MediaPage() {
         )}
         <Can role="editor">
           <div className="card row">
-            <input className="input" style={{ flex: 1 }} placeholder="https://…/gorsel.jpg" value={url} onChange={(e) => setUrl(e.target.value)} aria-label={t("URL")} />
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder={t("Görsel/video adresi, Google Drive ya da Dropbox paylaşım bağlantısı")}
+              title={t("Google Drive'da dosya \"bağlantıya sahip herkes\" ile paylaşılmış olmalı")}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              aria-label={t("URL")}
+            />
             <button className="btn" disabled={!/^https?:\/\//.test(url) || importUrl.isPending} onClick={() => importUrl.mutate()}>
               <Link2 /> {t("URL'den al")}
             </button>

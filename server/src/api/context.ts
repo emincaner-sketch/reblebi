@@ -29,7 +29,12 @@ export function setSessionCookie(reply: FastifyReply, sessionId: string): void {
 }
 
 export function clearSessionCookie(reply: FastifyReply): void {
-  reply.clearCookie(SESSION_COOKIE, { path: "/" });
+  reply.clearCookie(SESSION_COOKIE, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isSecure(),
+  });
 }
 
 function bearer(req: FastifyRequest): string | null {
@@ -132,5 +137,9 @@ export async function csrfGuard(req: FastifyRequest): Promise<void> {
   if (!req.cookies?.[SESSION_COOKIE] || bearer(req)) return;
   const origin = (req.headers.origin as string) || (req.headers.referer ? new URL(req.headers.referer as string).origin : "");
   if (!origin) throw new AppError(403, "err.csrf");
-  if (!allowedOrigins().includes(origin.replace(/\/$/, ""))) throw new AppError(403, "err.csrf");
+  const clean = origin.replace(/\/$/, "");
+  if (!isSecure() && (/^http:\/\/localhost:\d+$/.test(clean) || /^http:\/\/127\.0\.0\.1:\d+$/.test(clean))) {
+    return;
+  }
+  if (!allowedOrigins().includes(clean)) throw new AppError(403, "err.csrf");
 }

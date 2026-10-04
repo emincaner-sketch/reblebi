@@ -1,8 +1,8 @@
 {
-  "name": "sosyalpilot",
+  "name": "reblebi",
   "private": true,
   "version": "1.0.0",
-  "description": "SosyalPilot: çok platformlu sosyal medya yayın, hikaye ve DM otomasyon platformu (panel + API + MCP)",
+  "description": "Reblebi: çok platformlu sosyal medya yayın, hikaye ve DM otomasyon platformu (panel + API + MCP)",
   "type": "module",
   "workspaces": [
     "server",

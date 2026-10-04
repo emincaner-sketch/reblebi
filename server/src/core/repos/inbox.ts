@@ -158,6 +158,13 @@ export const inboxRepo = {
     const message = rowToMessage(db.prepare("SELECT * FROM messages WHERE id = ?").get(mid) as Row);
     return { conversation: conv, message, created };
   },
+  /** Konuşma metadata alanına alan ekler/günceller (ör. yorum konusunda son yorum kimliği) */
+  mergeMetadata(conversationId: string, patch: Record<string, unknown>): void {
+    const db = getDb();
+    const r = db.prepare("SELECT metadata FROM conversations WHERE id = ?").get(conversationId) as Row | undefined;
+    if (!r) return;
+    db.prepare("UPDATE conversations SET metadata = ? WHERE id = ?").run(JSON.stringify({ ...parseJson<Record<string, unknown>>(r.metadata, {}), ...patch }), conversationId);
+  },
   recordOutbound(
     conversationId: string,
     text: string,
@@ -217,6 +224,17 @@ export const inboxRepo = {
       autoRepliedLast7: n(
         "SELECT COUNT(*) c FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.org_id = ? AND m.direction='out' AND m.sent_by IN ('rule','ai') AND m.created_at >= ?",
         weekAgo,
+      ),
+    };
+  },
+  /** Analitik raporu: dönemde gelen mesaj ve kural/AI ile giden otomatik yanıt sayısı ([from, to) ISO) */
+  periodStats(orgId: string, from: string, to: string): { incoming: number; autoReplied: number } {
+    const db = getDb();
+    const n = (sql: string) => Number((db.prepare(sql).get(orgId, from, to) as Row).c ?? 0);
+    return {
+      incoming: n("SELECT COUNT(*) c FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.org_id = ? AND m.direction='in' AND m.created_at >= ? AND m.created_at < ?"),
+      autoReplied: n(
+        "SELECT COUNT(*) c FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.org_id = ? AND m.direction='out' AND m.sent_by IN ('rule','ai') AND m.created_at >= ? AND m.created_at < ?",
       ),
     };
   },

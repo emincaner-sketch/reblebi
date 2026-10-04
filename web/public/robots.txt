@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Disallow: /app/
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot
+Disallow: /reset-password
+Disallow: /verify
+Disallow: /invite
+Disallow: /consent
+Disallow: /preview/
+Disallow: /api/
+Disallow: /oauth/
+Disallow: /l/*/go/
+
+Sitemap: https://reblebi.com/sitemap.xml

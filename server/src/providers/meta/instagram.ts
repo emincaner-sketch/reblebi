@@ -1,8 +1,8 @@
 import { config } from "../../core/config.js";
 import type { Channel } from "../../core/types.js";
 import { sleep } from "../http.js";
-import { ProviderError, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
-import { GRAPH, graph, metaOAuthCallback, metaOAuthStart, sendPageMessage, waitForContainer } from "./common.js";
+import { ProviderError, type AudienceBreakdown, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
+import { fetchInsights, GRAPH, graph, insightBreakdown, insightNumber, metaOAuthCallback, metaOAuthStart, sendPageMessage, waitForContainer } from "./common.js";
 
 async function createContainer(igId: string, token: string, params: Record<string, unknown>): Promise<string> {
   const r = await graph<{ id: string }>(`/${igId}/media`, token, { method: "POST", params });
@@ -159,22 +159,60 @@ export const instagramProvider: Provider = {
   },
 
   async fetchPostMetrics(channel: Channel, externalId: string) {
-    const base = await graph<{ like_count?: number; comments_count?: number }>(`/${externalId}`, channel.accessToken, {
-      params: { fields: "like_count,comments_count" },
+    const base = await graph<{ like_count?: number; comments_count?: number; media_product_type?: string }>(`/${externalId}`, channel.accessToken, {
+      params: { fields: "like_count,comments_count,media_product_type" },
     });
     const m: Record<string, number> = { likes: Number(base.like_count ?? 0), comments: Number(base.comments_count ?? 0) };
-    try {
-      const ins = await graph<{ data?: Array<{ name: string; values?: Array<{ value: number }> }> }>(`/${externalId}/insights`, channel.accessToken, {
-        params: { metric: "reach,saved,shares,views" },
-      });
-      for (const d of ins.data ?? []) {
-        const v = d.values?.[0]?.value;
-        if (typeof v === "number") m[d.name] = v;
-      }
-    } catch {
-      /* hikaye/reel türüne göre bazı metrikler desteklenmeyebilir */
+    // İçerik biçimine göre desteklenen metrikler farklı: geçersiz biri tüm isteği düşürmesin
+    const type = (base.media_product_type ?? "FEED").toUpperCase();
+    const metrics =
+      type === "STORY"
+        ? ["reach", "views", "replies", "shares", "total_interactions"]
+        : type === "REELS"
+          ? ["reach", "views", "saved", "shares", "total_interactions", "ig_reels_avg_watch_time"]
+          : ["reach", "views", "saved", "shares", "total_interactions", "profile_visits", "follows"];
+    const rows = await fetchInsights(`/${externalId}/insights`, channel.accessToken, metrics, {});
+    for (const [name, row] of rows) {
+      const v = insightNumber(row);
+      if (v === null) continue;
+      // Ortak adlar: saved → saves, ig_reels_avg_watch_time (ms) → avgWatchMs
+      const key = name === "saved" ? "saves" : name === "ig_reels_avg_watch_time" ? "avgWatchMs" : name === "profile_visits" ? "profileVisits" : name === "total_interactions" ? "totalInteractions" : name;
+      m[key] = v;
     }
     return m;
+  },
+
+  async fetchDailyInsights(channel: Channel, range: { since: number; until: number }) {
+    const out: Record<string, number> = {};
+    const names: Record<string, string> = { reach: "reach", views: "views", profile_views: "profileViews", website_clicks: "websiteClicks", accounts_engaged: "engaged" };
+    const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, Object.keys(names), { period: "day", metric_type: "total_value", since: range.since, until: range.until });
+    for (const [name, row] of rows) {
+      const v = insightNumber(row);
+      if (v !== null && names[name]) out[names[name]] = v;
+    }
+    // Takipçi dengesi: FOLLOWER = takip eden, NON_FOLLOWER = takibi bırakan
+    const fu = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, ["follows_and_unfollows"], {
+      period: "day",
+      metric_type: "total_value",
+      breakdown: "follow_type",
+      since: range.since,
+      until: range.until,
+    });
+    const split = insightBreakdown(fu.get("follows_and_unfollows"));
+    if (split.FOLLOWER !== undefined) out.follows = split.FOLLOWER;
+    if (split.NON_FOLLOWER !== undefined) out.unfollows = split.NON_FOLLOWER;
+    return out;
+  },
+
+  async fetchAudience(channel: Channel) {
+    // follower_demographics en az 100 takipçide döner; her kırılım ayrı istek ister
+    const out: AudienceBreakdown = {};
+    for (const bd of ["country", "city", "age", "gender"] as const) {
+      const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, ["follower_demographics"], { period: "lifetime", metric_type: "total_value", breakdown: bd });
+      const rec = insightBreakdown(rows.get("follower_demographics"));
+      if (Object.keys(rec).length) out[bd] = rec;
+    }
+    return out;
   },
 
   async healthCheck(channel: Channel) {
@@ -186,3 +224,86 @@ export const instagramProvider: Provider = {
     }
   },
 };
+
+/* ---------------- Rakip takibi: Business Discovery ---------------- */
+
+export interface DiscoveredAccount {
+  username: string;
+  name: string | null;
+  avatarUrl: string | null;
+  biography: string | null;
+  followers: number | null;
+  mediaCount: number | null;
+  media: Array<{ id: string; caption: string; likes: number | null; comments: number | null; timestamp: string; type: string; permalink: string | null }>;
+}
+
+/**
+ * Başka bir Instagram işletme/içerik üreticisi hesabının herkese açık metrikleri (kendi IG hesabının jetonuyla).
+ * Kişisel hesaplar ve gizli beğeni sayıları dönmez; o alanlar null kalır.
+ */
+export async function businessDiscovery(igUserId: string, token: string, username: string): Promise<DiscoveredAccount> {
+  const clean = username.replace(/^@/, "").trim().toLowerCase();
+  const fields = `business_discovery.username(${clean}){username,name,profile_picture_url,biography,followers_count,media_count,media.limit(25){id,caption,like_count,comments_count,timestamp,media_type,permalink}}`;
+  const r = await graph<{
+    business_discovery?: {
+      username?: string;
+      name?: string;
+      profile_picture_url?: string;
+      biography?: string;
+      followers_count?: number;
+      media_count?: number;
+      media?: { data?: Array<{ id: string; caption?: string; like_count?: number; comments_count?: number; timestamp?: string; media_type?: string; permalink?: string }> };
+    };
+  }>(`/${igUserId}`, token, { params: { fields } });
+  const b = r.business_discovery;
+  if (!b) throw new ProviderError("Hesap bulunamadı ya da işletme/içerik üreticisi hesabı değil", 404);
+  return {
+    username: b.username ?? clean,
+    name: b.name ?? null,
+    avatarUrl: b.profile_picture_url ?? null,
+    biography: b.biography ?? null,
+    followers: typeof b.followers_count === "number" ? b.followers_count : null,
+    mediaCount: typeof b.media_count === "number" ? b.media_count : null,
+    media: (b.media?.data ?? []).map((m) => ({
+      id: m.id,
+      caption: (m.caption ?? "").slice(0, 300),
+      likes: typeof m.like_count === "number" ? m.like_count : null,
+      comments: typeof m.comments_count === "number" ? m.comments_count : null,
+      timestamp: m.timestamp ?? "",
+      type: m.media_type ?? "IMAGE",
+      permalink: m.permalink ?? null,
+    })),
+  };
+}
+
+/* ---------------- Profil ızgarası: son gönderiler ---------------- */
+
+export interface FeedItem {
+  id: string;
+  caption: string;
+  mediaType: string;
+  imageUrl: string | null;
+  permalink: string | null;
+  timestamp: string;
+  likes: number | null;
+  comments: number | null;
+}
+
+/** Hesabın profilde görünen son gönderileri (ızgara önizlemesi için; hikâyeler dahil değil) */
+export async function instagramRecentMedia(igUserId: string, token: string, limit = 30): Promise<FeedItem[]> {
+  const r = await graph<{ data?: Array<{ id: string; caption?: string; media_type?: string; media_url?: string; thumbnail_url?: string; permalink?: string; timestamp?: string; like_count?: number; comments_count?: number }> }>(
+    `/${igUserId}/media`,
+    token,
+    { params: { fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count", limit } },
+  );
+  return (r.data ?? []).map((m) => ({
+    id: m.id,
+    caption: m.caption ?? "",
+    mediaType: m.media_type ?? "IMAGE",
+    imageUrl: (m.media_type === "VIDEO" ? m.thumbnail_url : m.media_url) ?? m.thumbnail_url ?? null,
+    permalink: m.permalink ?? null,
+    timestamp: m.timestamp ?? "",
+    likes: m.like_count ?? null,
+    comments: m.comments_count ?? null,
+  }));
+}

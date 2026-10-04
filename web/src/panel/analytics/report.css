@@ -1,0 +1,87 @@
+/* Markalı rapor (pages/Report.tsx): ayar kartları + A4 sayfa önizlemesi + yazdırma düzeni */
+
+.rp-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; margin-bottom: 20px; align-items: start; }
+.rp-tools > .card { margin: 0; }
+.rp-th { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14.5px; font-weight: 700; }
+.rp-th svg { width: 16px; height: 16px; }
+.rp-lbl { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.rp-seg { flex-wrap: wrap; }
+.rp-checks { display: grid; gap: 8px; }
+.rp-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rp-sw { width: 28px; height: 28px; border-radius: 50%; padding: 0; border: 2px solid var(--bg-2); box-shadow: 0 0 0 1px var(--border-2); cursor: pointer; }
+.rp-sw.on { box-shadow: 0 0 0 2px var(--text); }
+.rp-sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.rp-swatches input[type="color"] { width: 36px; height: 30px; padding: 0; border: 1px solid var(--border-2); border-radius: 8px; background: none; cursor: pointer; }
+
+/* Sahne: sayfa ekranda ortalanır, dar ekranda yatay kaydırılır (A4 genişliği sabit) */
+.rp-stage { overflow-x: auto; padding: 4px 0 24px; }
+
+/* A4: 794 px (96 dpi). Kâğıt her temada açık: panel ve grafik değişkenleri burada açık değerlere sabitlenir. */
+.rp-paper {
+  --bg: #f3f1ec; --bg-2: #ffffff; --bg-3: #f6f4f0; --bg-hover: #efece6;
+  --border: #e6e1d8; --border-2: #d6cfc2;
+  --text: #1a1726; --text-2: #3a3548; --text-3: #5e5970;
+  --accent: #5b49f2; --accent-2: #4b39e0; --accent-soft: rgba(91, 73, 242, 0.09);
+  --ok: #1f7a45; --err: #b42318; --warn: #9a5b00;
+  --series-1: #5b49f2; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #2a78d6; --series-8: #e34948; --series-other: #8a8497;
+  --heat-1: #ece9fe; --heat-2: #d3cdfc; --heat-3: #b2a8f8; --heat-4: #8f80f3; --heat-5: #6b5bee; --heat-6: #4b39e0;
+  color-scheme: light;
+  width: 794px; min-height: 1123px; margin: 0 auto; padding: 0 46px 40px;
+  background: #ffffff; color: var(--text);
+  border-radius: 6px; box-shadow: 0 0 0 1px var(--border), 0 24px 48px -32px rgb(0 0 0 / 0.45);
+  font-size: 13.5px; line-height: 1.5;
+}
+.rp-loading { display: grid; place-items: center; color: var(--text-3); }
+
+.rp-cover { margin: 0 -46px 24px; padding: 34px 46px 28px; background: var(--rp-accent); color: var(--rp-ink); border-radius: 6px 6px 0 0; }
+.rp-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.rp-logo { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; background: #fff; flex-shrink: 0; }
+.rp-logo-i { display: grid; place-items: center; font-weight: 800; font-size: 22px; color: var(--rp-accent); }
+.rp-brandname { font-weight: 700; font-size: 15px; }
+.rp-kicker { font-size: 12.5px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.06em; }
+.rp-title { margin: 0; color: inherit; font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -0.02em; font-family: var(--font-display, inherit); }
+.rp-period { margin: 8px 0 0; font-size: 15px; font-weight: 600; }
+.rp-period span { font-weight: 400; opacity: 0.85; }
+.rp-meta { margin: 14px 0 0; font-size: 12.5px; opacity: 0.85; }
+.rp-intro { margin: 0 0 22px; padding: 14px 16px; border-left: 4px solid var(--rp-accent); background: var(--bg-3); border-radius: 0 8px 8px 0; white-space: pre-line; color: var(--text-2); }
+
+.rp-sec { margin: 0 0 26px; break-inside: avoid; }
+.rp-h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font-size: 17px; font-weight: 750; letter-spacing: -0.01em; }
+.rp-h2::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: var(--rp-accent); }
+.rp-h3 { margin: 0 0 6px; font-size: 13px; font-weight: 650; color: var(--text-2); }
+.rp-lead { margin: 0 0 12px; color: var(--text-3); font-size: 12.5px; }
+.rp-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.rp-kpis .st { box-shadow: none; }
+.rp-hl { margin-top: 14px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; }
+.rp-hl h3 { margin: 0 0 6px; font-size: 13px; }
+.rp-hl ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--text-2); }
+.rp-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+
+.rp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rp-table th, .rp-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: right; vertical-align: top; }
+.rp-table thead th { font-size: 11.5px; font-weight: 650; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid var(--border-2); }
+.rp-table th:first-child, .rp-table td:first-child { text-align: left; }
+.rp-table tbody th { font-weight: 600; }
+.rp-posts td:nth-child(2) { text-align: left; }
+.rp-posts th:nth-child(2) { text-align: left; }
+.rp-net { display: inline-flex; align-items: center; gap: 6px; }
+.rp-postcell { max-width: 330px; }
+.rp-post-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rp-sub { display: block; color: var(--text-3); font-size: 11.5px; }
+
+.rp-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 30px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--text-3); }
+
+@page { size: A4; margin: 12mm; }
+@media print {
+  html, body { background: #fff !important; }
+  .pn-top, .pn-side, .pn-drawer, .rp-noprint, .ch-tip, .toasts { display: none !important; }
+  .pn-body { display: block !important; }
+  .pn-main { padding: 0 !important; max-width: none !important; }
+  .rp-stage { overflow: visible; padding: 0; }
+  .rp-paper { width: auto; min-height: 0; padding: 0; margin: 0; box-shadow: none; border-radius: 0; }
+  .rp-cover { margin: 0 0 20px; padding: 24px 20px; border-radius: 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-paper * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-sec { break-inside: avoid; }
+  .rp-paper .hm-readout { display: none; }
+}

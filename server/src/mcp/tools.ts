@@ -8,10 +8,12 @@ import { mediaRepo, rulesRepo, type RuleInput } from "../core/repos/misc.js";
 import { orgSettingsRepo, orgsRepo } from "../core/repos/orgs.js";
 import { channelsRepo } from "../core/repos/channels.js";
 import { postsRepo } from "../core/repos/posts.js";
+import { workflowsRepo, workflowRunsRepo } from "../core/repos/workflows.js";
 import type { Ctx, PostStatus } from "../core/types.js";
 import { aiAvailable, draftReply, generateContent } from "../ai/index.js";
 import { RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
 import { requireRole } from "../services/access.js";
+import { executeWorkflow } from "../services/workflow-engine.js";
 import { analyticsOverview, dashboard } from "../services/analytics.js";
 import { listChannels } from "../services/channels.js";
 import { replyToConversation } from "../services/dm-engine.js";
@@ -410,7 +412,7 @@ export function buildMcpServer(ctx: Ctx): McpServer {
     "delete_post",
     {
       title: "Delete post · Gönderiyi sil",
-      description: "Deletes a post from the workspace. Already published content is NOT removed from the social platform.",
+      description: "Deletes a post from the workspace (it stays in the trash for 30 days and can be restored from the panel). Already published content is NOT removed from the social platform.",
       inputSchema: { postId: z.string() },
       annotations: { destructiveHint: true },
     },
@@ -649,6 +651,142 @@ export function buildMcpServer(ctx: Ctx): McpServer {
         const n = names();
         return { ...d, upcoming: d.upcoming.map((p) => compactPost(p, n)), pendingApproval: d.pendingApproval.map((p) => compactPost(p, n)), recent: d.recent.map((p) => compactPost(p, n)) };
       }),
+  );
+  server.registerTool(
+    "list_workflows",
+    {
+      title: "List Automations · İş akışlarını listele",
+      description: "Lists all automated workflows in the workspace with their triggers, run counts, and statuses.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => run(ctx, () => workflowsRepo.list(ctx.orgId))
+  );
+
+  server.registerTool(
+    "get_workflow",
+    {
+      title: "Get Automation · İş akışı detayı",
+      description: "Gets the full definition, trigger and steps of an automated workflow by id.",
+      inputSchema: { id: z.string().describe("Workflow id") },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) =>
+      run(ctx, () => {
+        const wf = workflowsRepo.get(ctx.orgId, a.id);
+        if (!wf) throw new AppError(404, "err.not_found", { what: "workflow" });
+        return wf;
+      })
+  );
+
+  server.registerTool(
+    "create_workflow",
+    {
+      title: "Create Automation · Yeni iş akışı oluştur",
+      description: "Creates an advanced automated workflow with triggers (webhook, post.published, post.failed, message.received, rss, cron) and steps (filter, formatter, ai, sistemler, action_post, action_webhook, action_email, action_notify).",
+      inputSchema: {
+        name: z.string().describe("Name of the automation"),
+        description: z.string().optional().describe("Description of what this workflow does"),
+        triggerType: z.enum([
+          "webhook.inbound",
+          "post.published",
+          "post.failed",
+          "post.scheduled",
+          "message.received",
+          "rss.new_item",
+          "schedule.cron",
+          "manual",
+        ]).describe("Trigger event"),
+        triggerConfig: z.record(z.string(), z.any()).optional().describe("Trigger configuration (e.g. { rssUrl, channelId, interval })"),
+        steps: z.array(
+          z.object({
+            id: z.string(),
+            type: z.enum([
+              "filter",
+              "formatter",
+              "ai",
+              "sistemler",
+              "delay",
+              "action_post",
+              "action_reply",
+              "action_webhook",
+              "action_email",
+              "action_notify",
+            ]),
+            name: z.string(),
+            config: z.record(z.string(), z.any()),
+          })
+        ).describe("Array of workflow steps"),
+      },
+    },
+    async (a) =>
+      run(ctx, () => {
+        requireRole(ctx, "editor");
+        return workflowsRepo.create({
+          orgId: ctx.orgId,
+          name: a.name,
+          description: a.description ?? null,
+          triggerType: a.triggerType,
+          triggerConfig: a.triggerConfig ?? {},
+          steps: a.steps as any,
+          createdBy: ctx.userId,
+        });
+      })
+  );
+
+  server.registerTool(
+    "toggle_workflow",
+    {
+      title: "Toggle Automation · İş akışını aç/kapat",
+      description: "Enables or disables an automated workflow.",
+      inputSchema: { id: z.string().describe("Workflow id") },
+    },
+    async (a) =>
+      run(ctx, () => {
+        requireRole(ctx, "editor");
+        const wf = workflowsRepo.toggle(ctx.orgId, a.id);
+        if (!wf) throw new AppError(404, "err.not_found", { what: "workflow" });
+        return { id: wf.id, name: wf.name, enabled: wf.enabled };
+      })
+  );
+
+  server.registerTool(
+    "test_workflow",
+    {
+      title: "Test Automation · İş akışını test et",
+      description: "Runs a test simulation of the automated workflow with a custom sample payload.",
+      inputSchema: {
+        id: z.string().describe("Workflow id"),
+        payload: z.record(z.string(), z.any()).optional().describe("Sample payload object"),
+      },
+    },
+    async (a) =>
+      run(ctx, async () => {
+        requireRole(ctx, "editor");
+        const wf = workflowsRepo.get(ctx.orgId, a.id);
+        if (!wf) throw new AppError(404, "err.not_found", { what: "workflow" });
+        const sample = a.payload || {
+          title: "Test Başlığı",
+          text: "Test mesaj içeriği",
+          from: "Müşteri Adı",
+          body: { topic: "AI ile Sosyal Medya", status: "success" },
+        };
+        return executeWorkflow(wf, sample, { testMode: true });
+      })
+  );
+
+  server.registerTool(
+    "list_workflow_runs",
+    {
+      title: "Automation Execution Logs · İş akışı çalışma kayıtları",
+      description: "Lists execution history and step-by-step logs for workflows.",
+      inputSchema: {
+        workflowId: z.string().optional().describe("Filter by specific workflow id"),
+        limit: z.number().int().min(1).max(100).optional().describe("Number of logs to return (default 20)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) =>
+      run(ctx, () => workflowRunsRepo.list(ctx.orgId, a.workflowId, a.limit ?? 20))
   );
 
   /* ----- Hazır komutlar (Claude'da / menüsünde görünür) ----- */

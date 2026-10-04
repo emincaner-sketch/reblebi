@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * SosyalPilot MCP stdio köprüsü.
+ * Reblebi MCP stdio köprüsü.
  * Sadece yerel (stdio) MCP destekleyen istemciler için: tüm istekleri uzaktaki /mcp uç noktasına iletir.
  * Araç tanımları tek yerde (sunucuda) durur; bu dosya sadece taşıyıcıdır.
  *
@@ -37,4 +37,4 @@ server.setRequestHandler(ListPromptsRequestSchema, async (req) => client.listPro
 server.setRequestHandler(GetPromptRequestSchema, async (req) => client.getPrompt(req.params));
 
 await server.connect(new StdioServerTransport());
-process.stderr.write(`SosyalPilot MCP köprüsü hazır → ${base}/mcp\n`);
+process.stderr.write(`Reblebi MCP köprüsü hazır → ${base}/mcp\n`);

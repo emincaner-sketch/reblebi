@@ -6,6 +6,7 @@ import { api, errMsg, type Campaign, type CampaignDetail, type Channel, type Pla
 import { useI18n, useLabels } from "../lib/i18n";
 import { useFmt } from "../lib/session";
 import { Can, Empty, Loading, Modal, PageHead, ProviderIcon, StatusBadge, useToast } from "../components/ui";
+import { CampaignPerformance } from "../panel/analytics/CampaignPerformance";
 
 const ALL_KINDS: PostKind[] = ["post", "story", "reel", "video", "thread"];
 
@@ -361,6 +362,7 @@ export function CampaignDetailPage() {
           </div>
         </Can>
       </div>
+      <CampaignPerformance campaign={c} />
       {c.brief && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-title">

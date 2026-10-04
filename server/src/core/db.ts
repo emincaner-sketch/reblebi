@@ -192,6 +192,358 @@ export const MIGRATIONS: Migration[] = [
     `,
   },
   { id: 2, up: migrateToMultiTenant },
+  {
+    id: 3,
+    sql: `
+    CREATE TABLE IF NOT EXISTS workflows (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      trigger_type TEXT NOT NULL,
+      trigger_config TEXT NOT NULL DEFAULT '{}',
+      webhook_slug TEXT UNIQUE,
+      steps TEXT NOT NULL DEFAULT '[]',
+      created_by TEXT,
+      run_count INTEGER NOT NULL DEFAULT 0,
+      last_run_at TEXT,
+      last_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflows_org ON workflows(org_id);
+    CREATE INDEX IF NOT EXISTS idx_workflows_trigger ON workflows(trigger_type, enabled);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_slug ON workflows(webhook_slug) WHERE webhook_slug IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      trigger_type TEXT NOT NULL,
+      trigger_payload TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL,
+      error TEXT,
+      steps_executed TEXT NOT NULL DEFAULT '[]',
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_wf ON workflow_runs(workflow_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_org ON workflow_runs(org_id, created_at DESC);
+    `,
+  },
+  {
+    id: 4,
+    sql: `
+    CREATE TABLE IF NOT EXISTS app_connections (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      app_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      credentials_enc TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'active',
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_app_conn_org ON app_connections(org_id, app_id);
+    `,
+  },
+  {
+    // Çöp kutusu: silinen gönderinin anlık görüntüsü (gönderi + hedefler + notlar) 30 gün saklanır, geri alınabilir
+    id: 5,
+    sql: `
+    CREATE TABLE IF NOT EXISTS deleted_posts (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      title TEXT,
+      preview TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT 'post',
+      status TEXT NOT NULL,
+      publish_at TEXT,
+      channel_ids TEXT NOT NULL DEFAULT '[]',
+      campaign_id TEXT,
+      snapshot TEXT NOT NULL,
+      deleted_by TEXT,
+      deleted_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_deleted_posts_org ON deleted_posts(org_id, deleted_at DESC);
+    `,
+  },
+  {
+    // Link in bio sayfaları (/l/:slug) ve günlük, kişisel veri içermeyen sayaçlar (link_id '' = sayfa görüntüleme)
+    id: 6,
+    sql: `
+    CREATE TABLE IF NOT EXISTS bio_pages (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      bio TEXT,
+      avatar_url TEXT,
+      theme TEXT NOT NULL DEFAULT '{}',
+      links TEXT NOT NULL DEFAULT '[]',
+      socials TEXT NOT NULL DEFAULT '[]',
+      grid TEXT NOT NULL DEFAULT '[]',
+      published INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_bio_pages_org ON bio_pages(org_id);
+    CREATE TABLE IF NOT EXISTS bio_events (
+      page_id TEXT NOT NULL REFERENCES bio_pages(id) ON DELETE CASCADE,
+      link_id TEXT NOT NULL DEFAULT '',
+      day TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'direct',
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (page_id, link_id, day, source)
+    );
+    `,
+  },
+  {
+    // Kanal kitlesi (ülke, şehir, yaş, cinsiyet): son çekilen kırılım; günlük hesap insights analytics_snapshots'ta ins_* anahtarlarıyla durur
+    id: 7,
+    sql: `
+    CREATE TABLE IF NOT EXISTS channel_audience (
+      channel_id TEXT PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+      data TEXT NOT NULL,
+      fetched_at TEXT NOT NULL
+    );
+    `,
+  },
+  {
+    // Rakip takibi: herkese açık hesap metrikleri (Instagram Business Discovery), günlük anlık görüntü
+    id: 8,
+    sql: `
+    CREATE TABLE IF NOT EXISTS competitors (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'instagram',
+      username TEXT NOT NULL,
+      name TEXT,
+      avatar_url TEXT,
+      biography TEXT,
+      recent TEXT NOT NULL DEFAULT '[]',
+      last_error TEXT,
+      last_fetched_at TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE (org_id, provider, username)
+    );
+    CREATE TABLE IF NOT EXISTS competitor_snapshots (
+      competitor_id TEXT NOT NULL REFERENCES competitors(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      followers INTEGER,
+      media_count INTEGER,
+      metrics TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (competitor_id, date)
+    );
+    `,
+  },
+  {
+    // Reklam metrikleri (salt okunur): bağlı reklam hesapları ve günlük hesap/kampanya insights (campaign_id '' = hesap toplamı)
+    id: 9,
+    sql: `
+    CREATE TABLE IF NOT EXISTS ad_accounts (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'meta',
+      external_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      currency TEXT,
+      token_enc TEXT NOT NULL,
+      token_expires_at TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_error TEXT,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE (org_id, provider, external_id)
+    );
+    CREATE TABLE IF NOT EXISTS ad_insights (
+      ad_account_id TEXT NOT NULL REFERENCES ad_accounts(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      campaign_id TEXT NOT NULL DEFAULT '',
+      campaign_name TEXT,
+      metrics TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (ad_account_id, date, campaign_id)
+    );
+    `,
+  },
+  {
+    // Çok platformlu reklamlar (Meta + Google Ads + TikTok Ads): yenileme jetonu, hesap ek bilgisi (ör. Google yönetici hesabı)
+    // ve grup / reklam / anahtar kelime düzeyinde günlük metrikler
+    id: 10,
+    up: (d) => {
+      addColumn(d, "ad_accounts", "refresh_token_enc", "TEXT");
+      addColumn(d, "ad_accounts", "extra", "TEXT NOT NULL DEFAULT '{}'");
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS ad_entity_insights (
+          ad_account_id TEXT NOT NULL REFERENCES ad_accounts(id) ON DELETE CASCADE,
+          date TEXT NOT NULL,
+          level TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          name TEXT,
+          parent_id TEXT,
+          parent_name TEXT,
+          extra TEXT NOT NULL DEFAULT '{}',
+          metrics TEXT NOT NULL DEFAULT '{}',
+          PRIMARY KEY (ad_account_id, date, level, entity_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ad_entity_level ON ad_entity_insights(ad_account_id, level, date);
+      `);
+    },
+  },
+  {
+    // Gönderi kütüphanesi (Metricool "Posts library"): yeniden kullanılabilir gönderi şablonları ve hashtag grupları
+    id: 11,
+    sql: `
+    CREATE TABLE IF NOT EXISTS library_items (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'post',
+      content TEXT NOT NULL DEFAULT '',
+      media_ids TEXT NOT NULL DEFAULT '[]',
+      use_count INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_library_org ON library_items(org_id, type);
+    `,
+  },
+  {
+    // Hashtag takibi (Metricool "Hashtag Tracker"): Instagram hashtag araması, günlük hacim ve öne çıkan gönderiler
+    id: 12,
+    sql: `
+    CREATE TABLE IF NOT EXISTS hashtag_tracks (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      hashtag TEXT NOT NULL,
+      ig_hashtag_id TEXT,
+      top TEXT NOT NULL DEFAULT '[]',
+      last_error TEXT,
+      last_fetched_at TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE (org_id, hashtag)
+    );
+    CREATE TABLE IF NOT EXISTS hashtag_snapshots (
+      track_id TEXT NOT NULL REFERENCES hashtag_tracks(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      metrics TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (track_id, date)
+    );
+    `,
+  },
+  {
+    // Studio (Metricool özel raporlar/panolar): sürükle-bırak pano düzeni (widgets JSON)
+    id: 13,
+    sql: `
+    CREATE TABLE IF NOT EXISTS dashboards (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      days INTEGER NOT NULL DEFAULT 30,
+      widgets TEXT NOT NULL DEFAULT '[]',
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_dashboards_org ON dashboards(org_id);
+    `,
+  },
+  {
+    // Otomatik listeler (Metricool "Autolists"): içerik kuyruğu seçilen gün/saatlerde sırayla, isterse döngüyle paylaşılır
+    id: 14,
+    sql: `
+    CREATE TABLE IF NOT EXISTS autolists (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      channel_ids TEXT NOT NULL DEFAULT '[]',
+      slots TEXT NOT NULL DEFAULT '[]',
+      repeat INTEGER NOT NULL DEFAULT 1,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0,
+      last_run_at TEXT,
+      last_error TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_autolists_org ON autolists(org_id);
+    CREATE TABLE IF NOT EXISTS autolist_items (
+      id TEXT PRIMARY KEY,
+      autolist_id TEXT NOT NULL REFERENCES autolists(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'post',
+      content TEXT NOT NULL DEFAULT '',
+      media_ids TEXT NOT NULL DEFAULT '[]',
+      position INTEGER NOT NULL DEFAULT 0,
+      use_count INTEGER NOT NULL DEFAULT 0,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_autolist_items ON autolist_items(autolist_id, position);
+    `,
+  },
+  {
+    // Web sitesi analitiği (Metricool izleme kodu karşılığı): çerezsiz, günlük toplanmış sayaçlar
+    id: 15,
+    sql: `
+    CREATE TABLE IF NOT EXISTS sites (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      domain TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      last_hit_at TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE (org_id, domain)
+    );
+    CREATE TABLE IF NOT EXISTS site_daily (
+      site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      dim TEXT NOT NULL,
+      key TEXT NOT NULL,
+      views INTEGER NOT NULL DEFAULT 0,
+      entries INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (site_id, date, dim, key)
+    );
+    CREATE TABLE IF NOT EXISTS site_seen (
+      site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      PRIMARY KEY (site_id, date, hash)
+    );
+    `,
+  },
+  {
+    // Studio panosunu zamanlı e-postayla gönderme: { freq, recipients, lastSent }
+    id: 16,
+    up: (d) => {
+      addColumn(d, "dashboards", "email", "TEXT NOT NULL DEFAULT '{}'");
+    },
+  },
+  {
+    // Anlık bildirim (Web Push) abonelikleri: cihaz başına uç nokta ve şifreleme anahtarları
+    id: 17,
+    sql: `
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'all',
+      ua TEXT,
+      fail_count INTEGER NOT NULL DEFAULT 0,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+    `,
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

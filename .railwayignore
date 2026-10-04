@@ -1,6 +1,13 @@
+node_modules
+**/node_modules
+server/dist
+web/dist
+web/dist-ssr
+/data
+/data-test
 .claude
-data-test
-data
+.git
 .env
 .env.*
 !.env.example
+*.log

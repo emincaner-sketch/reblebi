@@ -66,6 +66,18 @@ export interface RefreshedToken {
   tokenExpiresAt?: string | null;
 }
 
+/** Kitle kırılımı: anahtar → takipçi sayısı. age: "18-24"…; gender: "F" | "M" | "U"; ageGender: "F.18-24" */
+export interface AudienceBreakdown {
+  country?: Record<string, number>;
+  city?: Record<string, number>;
+  age?: Record<string, number>;
+  gender?: Record<string, number>;
+  /** Kimin kırılımı: takipçiler (Instagram, Facebook) ya da izleyiciler (YouTube) */
+  basis?: "followers" | "viewers";
+  /** Yaş/cinsiyet değerleri sayı değil yüzde (YouTube viewerPercentage) */
+  percent?: boolean;
+}
+
 export interface InboundEvent {
   /** Kanalı bulmak için sağlayıcı-taraflı hesap kimliği (page id / ig id / phone_number_id / bot id) */
   accountExternalId: string;
@@ -77,6 +89,10 @@ export interface InboundEvent {
   text: string;
   attachments?: Array<{ type: string; url?: string; name?: string }>;
   receivedAt?: string;
+  /** "comment": gönderi yorumu, "review": işletme değerlendirmesi (gelen kutusunda ayrı konu); varsayılan DM */
+  kind?: "dm" | "comment" | "review";
+  /** Yorumlar için: { kind, mediaId|postId, commentId, permalink, … } konuşmanın metadata alanına yazılır */
+  metadata?: Record<string, unknown>;
 }
 
 export interface SendMessageInput {
@@ -121,6 +137,16 @@ export interface Provider {
   fetchMetrics?(channel: Channel): Promise<Record<string, number>>;
   /** Yayınlanmış bir gönderinin beğeni/yorum/görüntülenme metrikleri */
   fetchPostMetrics?(channel: Channel, externalId: string): Promise<Record<string, number>>;
+  /**
+   * Tamamlanmış bir günün hesap insights değerleri (since/until: unix saniye, [since, until)).
+   * Standart anahtarlar: reach, views, profileViews, websiteClicks, follows, unfollows, engaged.
+   * Platform bir metriği vermezse anahtar hiç dönmez (0 yazılmaz).
+   */
+  fetchDailyInsights?(channel: Channel, range: { since: number; until: number }): Promise<Record<string, number>>;
+  /** İşletme değerlendirmesine herkese açık yanıt (Google Business Profile) */
+  replyReview?(channel: Channel, reviewName: string, text: string): Promise<{ externalId?: string | null }>;
+  /** Takipçi kitlesi kırılımı (ülke, şehir, yaş, cinsiyet); izin yoksa ya da hesap küçükse boş döner */
+  fetchAudience?(channel: Channel): Promise<AudienceBreakdown>;
   /**
    * Yayınlanmış gönderinin altına yorum ya da zincir yanıtı ekler.
    * parentExternalId: ana gönderinin id'si; replyToExternalId: zincirde bir önceki yorum (varsa)

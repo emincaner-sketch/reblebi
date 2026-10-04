@@ -294,6 +294,20 @@ export const analyticsRepo = {
     const r = getDb().prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? ORDER BY date DESC LIMIT 1").get(channelId) as Row | undefined;
     return r ? { id: r.id as string, channelId: r.channel_id as string, date: r.date as string, metrics: parseJson<Record<string, number>>(r.metrics, {}) } : null;
   },
+  /** Analitik raporu: tarih aralığındaki anlık görüntüler (YYYY-MM-DD, iki uç dahil) */
+  between(channelId: string, fromDate: string, toDate: string): AnalyticsSnapshot[] {
+    return (getDb().prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? AND date >= ? AND date <= ? ORDER BY date ASC").all(channelId, fromDate, toDate) as Row[]).map((r) => ({
+      id: r.id as string,
+      channelId: r.channel_id as string,
+      date: r.date as string,
+      metrics: parseJson<Record<string, number>>(r.metrics, {}),
+    }));
+  },
+  /** Verilen günden önceki son anlık görüntü (aralık başında taşınan değer için) */
+  lastBefore(channelId: string, date: string): AnalyticsSnapshot | null {
+    const r = getDb().prepare("SELECT * FROM analytics_snapshots WHERE channel_id = ? AND date < ? ORDER BY date DESC LIMIT 1").get(channelId, date) as Row | undefined;
+    return r ? { id: r.id as string, channelId: r.channel_id as string, date: r.date as string, metrics: parseJson<Record<string, number>>(r.metrics, {}) } : null;
+  },
 };
 
 export const postMetricsRepo = {

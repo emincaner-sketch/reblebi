@@ -38,7 +38,8 @@ const { postsRepo } = await import("../src/core/repos/posts.js");
 test("migration 2 uygulanır ve eski veri varsayılan çalışma alanına taşınır", () => {
   const db = getDb();
   const ids = (db.prepare("SELECT id FROM _migrations ORDER BY id").all() as Array<{ id: number }>).map((r) => r.id);
-  assert.deepEqual(ids, [1, 2]);
+  // Tüm migration'lar sırayla uygulanmış olmalı (yeni eklenenler dahil)
+  assert.deepEqual(ids, MIGRATIONS.map((m) => m.id));
 
   const org = orgsRepo.get("org_default");
   assert.ok(org, "org_default oluşmalı");

@@ -1,4 +1,4 @@
-/** Desteklenen platformlar */
+/** Desteklenen platformlar (Postiz + Zapier tam liste) */
 export type ProviderId =
   | "facebook"
   | "instagram"
@@ -8,9 +8,55 @@ export type ProviderId =
   | "linkedin"
   | "tiktok"
   | "youtube"
-  | "telegram";
+  | "telegram"
+  | "reddit"
+  | "pinterest"
+  | "gmb"
+  | "slack"
+  | "discord"
+  | "mastodon"
+  | "bluesky"
+  | "lemmy"
+  | "nostr"
+  | "vk"
+  | "devto"
+  | "medium"
+  | "hashnode"
+  | "wordpress"
+  | "warpcast"
+  | "kick"
+  | "twitch"
+  | "dribbble";
 
-export const ALL_PROVIDERS: ProviderId[] = ["instagram", "facebook", "threads", "whatsapp", "x", "linkedin", "tiktok", "youtube", "telegram"];
+export const ALL_PROVIDERS: ProviderId[] = [
+  "instagram",
+  "facebook",
+  "threads",
+  "whatsapp",
+  "x",
+  "linkedin",
+  "tiktok",
+  "youtube",
+  "telegram",
+  "reddit",
+  "pinterest",
+  "gmb",
+  "slack",
+  "discord",
+  "mastodon",
+  "bluesky",
+  "lemmy",
+  "nostr",
+  "vk",
+  "devto",
+  "medium",
+  "hashnode",
+  "wordpress",
+  "warpcast",
+  "kick",
+  "twitch",
+  "dribbble",
+];
 
 export type Locale = "tr" | "en";
 export type Role = "owner" | "admin" | "editor" | "viewer";
@@ -34,7 +80,7 @@ export type ChannelStatus = "active" | "expired" | "error" | "disabled";
 export type ConversationMode = "auto" | "manual";
 export type MessageDirection = "in" | "out";
 export type MessageSender = "customer" | "user" | "rule" | "ai";
-export type PostSource = "panel" | "mcp" | "api" | "ai" | "recurrence";
+export type PostSource = "panel" | "mcp" | "api" | "ai" | "recurrence" | "autolist";
 
 export interface Organization {
   id: string;
@@ -384,6 +430,17 @@ export interface OrgSettings {
   aiApiKeyEnc: string;
   aiBaseUrl: string;
   notifyOnFailureEmail: boolean;
+  /** Markalı rapor: logo adresi (https ya da /media/…), vurgu rengi, varsayılan bölümler, giriş notu */
+  reportLogoUrl: string;
+  reportColor: string;
+  reportSections: string[];
+  reportIntro: string;
+  /** Zamanlanmış e-posta özeti: kapalı, haftalık (pazartesi 09:00) ya da aylık (ayın ilk günü 09:00), çalışma alanı saatiyle */
+  reportEmail: "off" | "weekly" | "monthly";
+  /** Virgülle ayrılmış alıcılar; boşsa sahip ve yöneticiler */
+  reportRecipients: string;
+  /** Son gönderilen özetin dönemi (aynı dönem iki kez gönderilmesin), ör. "weekly:2026-09-28" */
+  reportLastSent: string;
 }
 
 export const DEFAULT_ORG_SETTINGS: OrgSettings = {
@@ -411,6 +468,13 @@ export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   aiApiKeyEnc: "",
   aiBaseUrl: "",
   notifyOnFailureEmail: true,
+  reportLogoUrl: "",
+  reportColor: "#5b49f2",
+  reportSections: ["summary", "followers", "networks", "engagement", "kinds", "timing", "topPosts", "hashtags"],
+  reportIntro: "",
+  reportEmail: "off",
+  reportRecipients: "",
+  reportLastSent: "",
 };
 
 /** Dil bazlı akıllı varsayılanlar (yeni org açılırken) */
@@ -427,3 +491,134 @@ export function localizedDefaults(locale: Locale): Partial<OrgSettings> {
         handoffKeywords: "insan, yetkili, temsilci, şikayet, iade",
       };
 }
+
+/* ============================================================
+   Zapier Tarzı İş Akışı (Workflows & Zaps) Tipleri
+============================================================ */
+
+export type WorkflowTriggerType =
+  | "webhook.inbound"         // Gelen özel webhook (Zapier Catch Hook)
+  | "shopify.order_created"   // Shopify: Yeni sipariş / ödeme alındı
+  | "shopify.cart_abandoned"  // Shopify: Sepet terk edildi
+  | "stripe.payment_succeeded"// Stripe: Başarılı ödeme
+  | "forms.submission"        // Form yanıtı (Typeform / Google Forms vb.)
+  | "post.published"          // Gönderi yayınlandı
+  | "post.failed"             // Gönderi başarısız oldu
+  | "post.scheduled"          // Gönderi planlandı
+  | "message.received"        // Gelen DM / mesaj / yorum
+  | "rss.new_item"            // RSS akışında yeni içerik
+  | "schedule.cron"           // Periyodik zamanlayıcı (saatlik, günlük vb.)
+  | "manual";                 // Elle veya test tetikleme
+
+export type WorkflowStepType =
+  | "filter"                  // Koşullu filtre (eşittir, içerir, regex...)
+  | "paths"                   // Zapier Paths: Koşullu dallanma (Path A / Path B)
+  | "formatter"               // Veri biçimlendirici (metin, sayı, tarih, para)
+  | "code"                    // Code by Zapier: Güvenli JavaScript kod çalıştırma
+  | "looping"                 // Looping by Zapier: Dizi öğelerini döngüyle işleme
+  | "ai"                      // AI by Zapier (özet, yeniden yazım, sınıflandırma)
+  | "sistemler"               // Sistemler klasöründeki ajanlar (marka-hafizasi, carousel, trend-radari vb.)
+  | "delay"                   // Bekleme (süre veya hedeflenen tarihe kadar)
+  | "action_post"             // Reblebi üzerinde 25+ platforma gönderi oluştur / yayınla
+  | "action_reply"            // DM'ye otomatik yanıt ver
+  | "action_slack"            // Slack: Kanala mesaj veya Block Kit bildirimi
+  | "action_discord"          // Discord: Webhook ile zengin Embed mesajı
+  | "action_telegram"         // Telegram: Kanal veya gruba bildirim gönder
+  | "action_calendar_event"   // Takvime etkinlik / içerik bloğu ekle
+  | "action_shopify"          // Shopify: Siparişe etiket / not ekle
+  | "action_webhook"          // Harici API / Webhook çağrısı (POST, GET, PUT...)
+  | "action_email"            // E-posta uyarısı gönder
+  | "action_notify";          // Reblebi içi bildirim
+
+export type AppConnectorId =
+  | "shopify"
+  | "slack"
+  | "discord"
+  | "stripe"
+  | "google"
+  | "notion"
+  | "airtable"
+  | "reddit"
+  | "pinterest"
+  | "wordpress";
+
+export interface AppConnection {
+  id: string;
+  orgId: string;
+  appId: AppConnectorId;
+  name: string;
+  credentials: Record<string, any>;
+  metadata: Record<string, any>;
+  status: "active" | "error" | "revoked";
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowCondition {
+  field: string;
+  operator:
+    | "equals"
+    | "not_equals"
+    | "contains"
+    | "not_contains"
+    | "starts_with"
+    | "ends_with"
+    | "regex"
+    | "greater_than"
+    | "less_than"
+    | "is_empty"
+    | "is_not_empty";
+  value: string;
+}
+
+export interface WorkflowStep {
+  id: string;
+  type: WorkflowStepType;
+  name: string;
+  config: Record<string, any>;
+}
+
+export interface Workflow {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  enabled: number;
+  triggerType: WorkflowTriggerType;
+  triggerConfig: Record<string, any>;
+  webhookSlug: string | null;
+  steps: WorkflowStep[];
+  createdBy: string | null;
+  runCount: number;
+  lastRunAt: string | null;
+  lastStatus: "idle" | "success" | "failed" | "filtered" | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowStepExecution {
+  stepId: string;
+  name: string;
+  type: WorkflowStepType;
+  status: "success" | "failed" | "filtered" | "skipped";
+  input: any;
+  output: any;
+  durationMs: number;
+  error?: string | null;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  orgId: string;
+  triggerType: WorkflowTriggerType;
+  triggerPayload: Record<string, any>;
+  status: "running" | "success" | "failed" | "filtered";
+  error: string | null;
+  stepsExecuted: WorkflowStepExecution[];
+  durationMs: number;
+  createdAt: string;
+  updatedAt: string;
+}
+

@@ -4,6 +4,7 @@ import { notFound } from "../../core/i18n.js";
 import { postNotesRepo, presetsRepo, previewLinksRepo, signaturesRepo, tagsRepo } from "../../core/repos/content.js";
 import { mediaRepo } from "../../core/repos/misc.js";
 import { postsRepo } from "../../core/repos/posts.js";
+import { TRASH_DAYS } from "../../core/repos/trash.js";
 import type { PostStatus } from "../../core/types.js";
 import { requireRole } from "../../services/access.js";
 import { assertFeature } from "../../services/limits.js";
@@ -18,9 +19,12 @@ import {
   duplicatePost,
   getPostDetail,
   listPosts,
+  listTrash,
   publishNow,
+  purgeTrash,
   rejectPost,
   reschedulePost,
+  restorePost,
   updatePost,
   validatePost,
 } from "../../services/posts.js";
@@ -83,6 +87,13 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     deletePost(ctxOf(req), Id.parse(req.params).id);
     return { ok: true };
   });
+
+  /* ---------------- Çöp kutusu (silinen gönderiler, 30 gün) ---------------- */
+
+  app.get("/api/posts/trash", async (req) => ({ items: listTrash(ctxOf(req)), days: TRASH_DAYS }));
+  app.post("/api/posts/trash/:id/restore", async (req) => restorePost(ctxOf(req), Id.parse(req.params).id));
+  app.delete("/api/posts/trash/:id", async (req) => purgeTrash(ctxOf(req), Id.parse(req.params).id));
+  app.delete("/api/posts/trash", async (req) => purgeTrash(ctxOf(req), null));
 
   /* ---------------- Ekip notları ---------------- */
 

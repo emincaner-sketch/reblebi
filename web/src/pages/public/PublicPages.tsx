@@ -2,13 +2,19 @@ import { useEffect, useState, type ReactNode } from "react";
 import { McpGuide } from "../../components/McpGuide";
 import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CalendarClock, Check, CheckCircle2, Inbox, MessageSquare, Minus, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { Bot, Check, CheckCircle2, MessageSquare, Minus, ShieldCheck } from "lucide-react";
 import { api, errMsg, PROVIDER_NAME, type PlanFeature, type PlanInfo, type PostKind, type ProviderId, type Role } from "../../lib/api";
 import { useI18n, useLabels } from "../../lib/i18n";
 import { useMeQuery } from "../../lib/session";
 import { fmt, BROWSER_TZ } from "../../lib/tz";
 import { ProviderIcon } from "../../components/ui";
 import { AuthLayout, usePublicConfig } from "./AuthPages";
+import { PublicShell } from "../../landing/PublicShell";
+import { usePage, useHydrated } from "../../landing/util";
+import { Seo } from "../../seo/Seo";
+import { legalJsonLd, mcpJsonLd } from "../../seo/jsonld";
+import { pathFor } from "../../seo/routes";
+import { SITE_NAME, SITE_URL } from "../../config/site";
 
 /* ---------------- MCP OAuth onay ekranı ---------------- */
 
@@ -101,28 +107,55 @@ export function ConsentPage() {
 /* ---------------- Meta veri silme durumu ---------------- */
 
 export function DataDeletionPage() {
-  const { t, intl } = useI18n();
+  const { t, intl, locale } = useI18n();
   const [params] = useSearchParams();
-  const code = params.get("code") ?? "";
+  const cfg = usePublicConfig();
+  // Sayfa ön-render edilir; ?code= parametresi hidrasyondan sonra okunur (sunucu HTML'i ile ilk çizim aynı kalsın)
+  const hydrated = useHydrated();
+  const code = hydrated ? (params.get("code") ?? "") : "";
   const q = useQuery({ queryKey: ["deletion", code], queryFn: () => api.get<{ code: string; status: string; at: string; channels: number }>(`/api/public/data-deletion/${code}`), enabled: /^[a-f0-9]{16}$/.test(code), retry: false });
+  const title = t("Veri silme talebi");
+  const email = cfg.data?.supportEmail;
   return (
-    <AuthLayout title={t("Veri silme talebi")} footer={<Link to="/privacy">{t("Gizlilik Politikası")}</Link>}>
-      {!code ? (
-        <p>{t("Facebook/Instagram bağlantına ait verilerin silinmesini istiyorsan Facebook > Ayarlar > Uygulamalar ve Web Siteleri'nden uygulamamızı kaldırıp 'Veri silme iste' seçeneğini kullan. Talep otomatik işlenir ve buraya bir onay kodu ile yönlendirilirsin.")}</p>
-      ) : q.data ? (
-        <div className="center-col">
-          <CheckCircle2 style={{ width: 40, height: 40, color: "var(--ok)" }} />
-          <p>{t("Talebin tamamlandı. Silinen bağlı hesap sayısı: {n}", { n: q.data.channels })}</p>
-          <p className="muted small">
-            {t("Onay kodu")}: <code>{q.data.code}</code> · {fmt(q.data.at, BROWSER_TZ, intl)}
-          </p>
+    <PublicShell>
+      <Seo page="deletion" jsonLd={legalJsonLd(locale, title, pathFor("deletion", locale))} />
+      <div className="lp-container lp-narrow">
+        <header className="lp-page-head left">
+          <h1>{title}</h1>
+        </header>
+        <div className="lp-doc">
+          <div className="card lp-legal">
+            {!code ? (
+              <>
+                <section>
+                  <h2>{t("Facebook ve Instagram verileri")}</h2>
+                  <p>{t("Facebook/Instagram bağlantına ait verilerin silinmesini istiyorsan Facebook > Ayarlar > Uygulamalar ve Web Siteleri'nden uygulamamızı kaldırıp 'Veri silme iste' seçeneğini kullan. Talep otomatik işlenir ve buraya bir onay kodu ile yönlendirilirsin.")}</p>
+                </section>
+                <section>
+                  <h2>{t("Kanal ve hesap verileri")}</h2>
+                  <p>
+                    {t("Bir kanalı panelden kaldırdığında ona ait token ve konuşmalar silinir. Çalışma alanını sildiğinde bütün verileri kalıcı olarak silinir.")}
+                    {email ? " " + t("Hesabının tamamen silinmesi için {email} adresine yazabilirsin.", { email }) : ""}
+                  </p>
+                </section>
+              </>
+            ) : q.data ? (
+              <div className="center-col">
+                <CheckCircle2 style={{ width: 40, height: 40, color: "var(--lp-success)" }} />
+                <p>{t("Talebin tamamlandı. Silinen bağlı hesap sayısı: {n}", { n: q.data.channels })}</p>
+                <p className="lp-small">
+                  {t("Onay kodu")}: <code>{q.data.code}</code> · {fmt(q.data.at, BROWSER_TZ, intl)}
+                </p>
+              </div>
+            ) : q.isError ? (
+              <p>{t("Bu onay kodu bulunamadı.")}</p>
+            ) : (
+              <p className="lp-small">…</p>
+            )}
+          </div>
         </div>
-      ) : q.isError ? (
-        <p>{t("Bu onay kodu bulunamadı.")}</p>
-      ) : (
-        <p className="muted">…</p>
-      )}
-    </AuthLayout>
+      </div>
+    </PublicShell>
   );
 }
 
@@ -226,7 +259,7 @@ export function PreviewPage() {
   );
 }
 
-/* ---------------- Satış sayfası ---------------- */
+/* ---------------- Plan kartı (panel: Plan & kullanım) ---------------- */
 
 const FEATURE_LABEL: Record<PlanFeature, string> = {
   mcp: "Claude / ChatGPT (MCP) bağlantısı",
@@ -274,155 +307,50 @@ export function PlanCard({ p, highlight, cta }: { p: PlanInfo; highlight?: boole
   );
 }
 
-export function LandingPage() {
-  const { t, locale, setLocale } = useI18n();
-  const cfg = usePublicConfig();
-  const me = useMeQuery();
-  const c = cfg.data;
-  const open = c?.signupMode === "open";
-  const providers: ProviderId[] = ["instagram", "facebook", "threads", "whatsapp", "x", "linkedin", "tiktok", "youtube", "telegram"];
-  const features = [
-    { icon: <CalendarClock />, title: t("Tek panelden planla"), text: t("Tek metin, dokuz platform. Gönderi, hikaye, reel, zincir; kanal başına özel metin ve takvim.") },
-    { icon: <Inbox />, title: t("Birleşik gelen kutusu"), text: t("Instagram DM, Messenger, WhatsApp, Telegram ve X mesajları tek yerde; kurallarla otomatik yanıt.") },
-    { icon: <Sparkles />, title: t("AI içerik ve planlama"), text: t("Brief ver, marka sesinle her platform için metin ve 2 haftalık içerik takvimi üretsin.") },
-    { icon: <Bot />, title: t("Claude, ChatGPT, Gemini ve Grok ile yönet"), text: t("MCP bağlantısıyla AI asistanın içerik takvimi kurar, gönderileri boş saatlere yerleştirir, gelen kutusunu özetler.") },
-    { icon: <Users />, title: t("Ekip ve onay akışı"), text: t("Roller, onay bekleyen gönderiler, müşteriye önizleme linki ve yorumlar.") },
-    { icon: <ShieldCheck />, title: t("Resmî API'ler"), text: t("Şifre istemez; her platformun resmî OAuth akışıyla bağlanır, token'lar şifreli saklanır.") },
-  ];
-
-  return (
-    <div className="public-page">
-      <header className="landing-nav">
-        <div className="brand" style={{ padding: 0 }}>
-          <div className="brand-logo">{(c?.appName ?? "S").slice(0, 1)}</div>
-          <div className="brand-name">{c?.appName ?? "SosyalPilot"}</div>
-        </div>
-        <div className="row">
-          <Link to="/docs/mcp" className="btn btn-ghost">{t("AI bağlantısı")}</Link>
-          <a href="#pricing" className="btn btn-ghost">{t("Fiyatlar")}</a>
-          <div className="segmented segmented-sm">
-            <button className={locale === "tr" ? "active" : ""} onClick={() => setLocale("tr")}>TR</button>
-            <button className={locale === "en" ? "active" : ""} onClick={() => setLocale("en")}>EN</button>
-          </div>
-          {me.data?.user ? (
-            <Link to="/app" className="btn btn-primary">{t("Panele git")}</Link>
-          ) : (
-            <>
-              <Link to="/login" className="btn">{t("Giriş")}</Link>
-              {open && <Link to="/signup" className="btn btn-primary">{t("Ücretsiz dene")}</Link>}
-            </>
-          )}
-        </div>
-      </header>
-
-      <section className="hero">
-        <h1>{t("Sosyal medyanı tek panelden, AI ile yönet")}</h1>
-        <p>{t("Planla, yayınla, DM'leri otomatik yanıtla ve performansı izle. Instagram'dan TikTok'a dokuz platform, tek hesap.")}</p>
-        <div className="row" style={{ justifyContent: "center" }}>
-          {open && !me.data?.user && (
-            <Link to="/signup" className="btn btn-primary btn-lg">
-              {c && c.trialDays > 0 ? t("{days} gün ücretsiz dene", { days: c.trialDays }) : t("Ücretsiz başla")}
-            </Link>
-          )}
-          <a href="#pricing" className="btn btn-lg">{t("Planları gör")}</a>
-        </div>
-        <div className="row" style={{ justifyContent: "center", marginTop: 26, gap: 8 }}>
-          {providers.map((p) => (
-            <ProviderIcon key={p} provider={p} size={30} />
-          ))}
-        </div>
-      </section>
-
-      <section className="landing-grid">
-        {features.map((f) => (
-          <div key={f.title} className="card feature">
-            <div className="feature-icon">{f.icon}</div>
-            <h3>{f.title}</h3>
-            <p className="muted">{f.text}</p>
-          </div>
-        ))}
-      </section>
-
-      <section id="pricing" className="pricing">
-        <h2 style={{ textAlign: "center", fontSize: 26 }}>{t("Fiyatlar")}</h2>
-        <p className="muted" style={{ textAlign: "center", marginBottom: 24 }}>
-          {c && c.trialDays > 0 ? t("Her yeni hesap {days} gün {plan} planıyla başlar.", { days: c.trialDays, plan: c.plans.find((p) => p.id === c.trialPlan)?.name[locale] ?? c.trialPlan }) : t("İstediğin zaman plan değiştir.")}
-        </p>
-        <div className="plan-grid">
-          {c?.plans.map((p) => (
-            <PlanCard
-              key={p.id}
-              p={p}
-              highlight={p.id === "pro"}
-              cta={
-                open ? (
-                  <Link to="/signup" className={`btn btn-block ${p.id === "pro" ? "btn-primary" : ""}`}>
-                    {t("Başla")}
-                  </Link>
-                ) : null
-              }
-            />
-          ))}
-        </div>
-      </section>
-
-      <LegalFooter />
-    </div>
-  );
-}
-
-export function LegalFooter() {
-  const { t } = useI18n();
-  const cfg = usePublicConfig();
-  const c = cfg.data;
-  return (
-    <footer className="landing-foot">
-      <span>
-        © {new Date().getFullYear()} {c?.companyName || c?.appName || "SosyalPilot"}
-      </span>
-      <span className="row">
-        <Link to="/privacy">{t("Gizlilik")}</Link>
-        <Link to="/terms">{t("Koşullar")}</Link>
-        <Link to="/data-deletion">{t("Veri silme")}</Link>
-        {c?.supportEmail && <a href={`mailto:${c.supportEmail}`}>{c.supportEmail}</a>}
-      </span>
-    </footer>
-  );
-}
-
 /* ---------------- MCP bağlantı rehberi (herkese açık) ---------------- */
 
 export function McpDocsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const page = usePage();
   const cfg = usePublicConfig();
   const c = cfg.data;
-  const app = c?.appName ?? "SosyalPilot";
+  const app = SITE_NAME;
+  const title = t("AI asistanını {app}'ye bağla", { app });
+  const intro = t("{app}, Model Context Protocol (MCP) ile Claude, ChatGPT, Gemini, Grok ve Cursor gibi AI asistanlarına bağlanır. Asistanın içerik takvimini kurar, gönderileri boş saatlere yerleştirir ve zamanı gelince {app} paylaşır; arada üçüncü parti bir araca gerek yoktur.", { app });
   return (
-    <div className="public-page">
-      <div className="public-narrow" style={{ maxWidth: 820 }}>
-        <Link to="/" className="brand" style={{ padding: 0, color: "inherit" }}>
-          <div className="brand-logo">{app.slice(0, 1)}</div>
-          <div className="brand-name">{app}</div>
-        </Link>
-        <h1 style={{ margin: "24px 0 6px" }}>{t("AI asistanını bağla")}</h1>
-        <p className="muted" style={{ marginBottom: 20 }}>
-          {t("{app}, Model Context Protocol (MCP) ile Claude, ChatGPT, Gemini, Grok ve Cursor gibi AI asistanlarına bağlanır. Asistanın içerik takvimini kurar, gönderileri boş saatlere yerleştirir ve zamanı gelince {app} paylaşır; arada Zapier gibi bir araca gerek yoktur.", { app })}
-        </p>
-        <div className="card">
-          <McpGuide mcpUrl={c?.mcpUrl ?? `${window.location.origin}/mcp`} appName={app} />
-        </div>
-        <div className="card" style={{ marginTop: 16 }}>
-          <h2 style={{ marginBottom: 8 }}>{t("Nasıl çalışır?")}</h2>
-          <ol className="steps">
-            <li>{t("Asistan önce çalışma alanı bilgisini okur: kanalların, saat dilimin, paylaşım saatlerin ve kotaların.")}</li>
-            <li>{t("Kanalların boş paylaşım saatlerini bulur ve planı önce deneme modunda doğrular (karakter sınırı, zorunlu görsel, tarih).")}</li>
-            <li>{t("Onayınla gönderileri tek seferde kampanya olarak kaydeder. Onay modu açıksa gönderiler senin onayını bekler.")}</li>
-            <li>{t("{app} her gönderiyi zamanı gelince platformun resmî API'siyle paylaşır, hataları tekrar dener ve sonucu bildirir.", { app })}</li>
-          </ol>
+    <PublicShell>
+      <Seo page="mcp" jsonLd={mcpJsonLd(locale, title, intro)} />
+      <div className="lp-container lp-narrow">
+        <header className="lp-page-head left">
+          <nav aria-label={t("Sayfa yolu")}>
+            <ol className="lp-crumbs">
+              <li>
+                <Link to={page("home")}>{t("Ana sayfa")}</Link>
+              </li>
+              <li aria-current="page">{t("AI bağlantı rehberi (MCP)")}</li>
+            </ol>
+          </nav>
+          <span className="lp-eyebrow">Claude · ChatGPT · Gemini · Grok</span>
+          <h1>{title}</h1>
+          <p className="lp-lead">{intro}</p>
+        </header>
+        <div className="lp-doc">
+          <div className="card">
+            <h2>{t("Kurulum adımları")}</h2>
+            <McpGuide mcpUrl={c?.mcpUrl ?? `${SITE_URL}/mcp`} appName={app} />
+          </div>
+          <div className="card">
+            <h2>{t("Nasıl çalışır?")}</h2>
+            <ol className="steps">
+              <li>{t("Asistan önce çalışma alanı bilgisini okur: kanalların, saat dilimin, paylaşım saatlerin ve kotaların.")}</li>
+              <li>{t("Kanalların boş paylaşım saatlerini bulur ve planı önce deneme modunda doğrular (karakter sınırı, zorunlu görsel, tarih).")}</li>
+              <li>{t("Onayınla gönderileri tek seferde kampanya olarak kaydeder. Onay modu açıksa gönderiler senin onayını bekler.")}</li>
+              <li>{t("{app} her gönderiyi zamanı gelince platformun resmî API'siyle paylaşır, hataları tekrar dener ve sonucu bildirir.", { app })}</li>
+            </ol>
+          </div>
         </div>
       </div>
-      <LegalFooter />
-    </div>
+    </PublicShell>
   );
 }
 
@@ -432,9 +360,9 @@ export function LegalPage({ kind }: { kind: "privacy" | "terms" }) {
   const { t, locale } = useI18n();
   const cfg = usePublicConfig();
   const c = cfg.data;
-  const company = c?.companyName || c?.appName || "SosyalPilot";
+  const company = c?.companyName || SITE_NAME;
   const email = c?.supportEmail || "—";
-  const app = c?.appName ?? "SosyalPilot";
+  const app = SITE_NAME;
   const tr = locale === "tr";
 
   const privacy = tr
@@ -478,15 +406,15 @@ export function LegalPage({ kind }: { kind: "privacy" | "terms" }) {
       ];
 
   const sections = kind === "privacy" ? privacy : terms;
+  const title = kind === "privacy" ? t("Gizlilik Politikası") : t("Kullanım Koşulları");
   return (
-    <div className="public-page">
-      <div className="public-narrow">
-        <Link to="/" className="brand" style={{ padding: 0, color: "inherit" }}>
-          <div className="brand-logo">{app.slice(0, 1)}</div>
-          <div className="brand-name">{app}</div>
-        </Link>
-        <h1 style={{ margin: "24px 0 6px" }}>{kind === "privacy" ? t("Gizlilik Politikası") : t("Kullanım Koşulları")}</h1>
-        <div className="form legal">
+    <PublicShell>
+      <Seo page={kind} jsonLd={legalJsonLd(locale, title, pathFor(kind, locale))} />
+      <div className="lp-container lp-narrow">
+        <header className="lp-page-head left">
+          <h1>{title}</h1>
+        </header>
+        <div className="lp-legal">
           {sections.map(([h, p]) => (
             <section key={h}>
               <h2>{h}</h2>
@@ -495,7 +423,6 @@ export function LegalPage({ kind }: { kind: "privacy" | "terms" }) {
           ))}
         </div>
       </div>
-      <LegalFooter />
-    </div>
+    </PublicShell>
   );
 }

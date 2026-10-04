@@ -8,6 +8,24 @@ import { linkedinProvider } from "./linkedin.js";
 import { tiktokProvider } from "./tiktok.js";
 import { youtubeProvider } from "./youtube.js";
 import { telegramProvider } from "./telegram.js";
+import { redditProvider } from "./reddit.js";
+import { pinterestProvider } from "./pinterest.js";
+import { gmbProvider } from "./gmb.js";
+import { slackProvider } from "./slack.js";
+import { discordProvider } from "./discord.js";
+import { blueskyProvider } from "./bluesky.js";
+import { mastodonProvider } from "./mastodon.js";
+import { wordpressProvider } from "./wordpress.js";
+import { mediumProvider } from "./medium.js";
+import { devtoProvider } from "./devto.js";
+import { hashnodeProvider } from "./hashnode.js";
+import { nostrProvider } from "./nostr.js";
+import { warpcastProvider } from "./warpcast.js";
+import { lemmyProvider } from "./lemmy.js";
+import { vkProvider } from "./vk.js";
+import { dribbbleProvider } from "./dribbble.js";
+import { twitchProvider } from "./twitch.js";
+import { kickProvider } from "./kick.js";
 import type { Provider } from "./types.js";
 
 export * from "./types.js";
@@ -24,6 +42,24 @@ const registry: Record<ProviderId, Provider> = {
   tiktok: tiktokProvider,
   youtube: youtubeProvider,
   telegram: telegramProvider,
+  reddit: redditProvider,
+  pinterest: pinterestProvider,
+  gmb: gmbProvider,
+  slack: slackProvider,
+  discord: discordProvider,
+  bluesky: blueskyProvider,
+  mastodon: mastodonProvider,
+  wordpress: wordpressProvider,
+  medium: mediumProvider,
+  devto: devtoProvider,
+  hashnode: hashnodeProvider,
+  nostr: nostrProvider,
+  warpcast: warpcastProvider,
+  lemmy: lemmyProvider,
+  vk: vkProvider,
+  dribbble: dribbbleProvider,
+  twitch: twitchProvider,
+  kick: kickProvider,
 };
 
 export function getProvider(id: ProviderId): Provider {

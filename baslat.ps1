@@ -1,4 +1,4 @@
-# SosyalPilot baslatici
+# Reblebi baslatici
 # Kullanim: PowerShell'de  .\baslat.ps1   ya da baslat.cmd dosyasina cift tikla
 # Parametre: .\baslat.ps1 -Uretim   (derlenmis surumu tek porttan calistirir)
 
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
 Write-Host ""
-Write-Host "  SosyalPilot" -ForegroundColor Magenta
+Write-Host "  Reblebi" -ForegroundColor Magenta
 Write-Host "  ===========" -ForegroundColor DarkGray
 Write-Host ""
 
@@ -67,7 +67,7 @@ foreach ($port in @(4100, 5173)) {
         $pidList = ($busy | Select-Object -ExpandProperty OwningProcess -Unique) -join ", "
         Write-Host ""
         Write-Host "  NOT: $port portu zaten kullanimda (PID $pidList)." -ForegroundColor Yellow
-        Write-Host "  Muhtemelen SosyalPilot arka planda calisiyor. Durdurmak icin:" -ForegroundColor DarkGray
+        Write-Host "  Muhtemelen Reblebi arka planda calisiyor. Durdurmak icin:" -ForegroundColor DarkGray
         Write-Host "    Stop-Process -Id $pidList -Force" -ForegroundColor DarkGray
     }
 }

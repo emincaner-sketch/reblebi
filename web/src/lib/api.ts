@@ -52,9 +52,34 @@ export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/* ---------------- Tipler (sunucu ile uyumlu) ---------------- */
-
-export type ProviderId = "facebook" | "instagram" | "threads" | "whatsapp" | "x" | "linkedin" | "tiktok" | "youtube" | "telegram";
+export type ProviderId =
+  | "facebook"
+  | "instagram"
+  | "threads"
+  | "whatsapp"
+  | "x"
+  | "linkedin"
+  | "tiktok"
+  | "youtube"
+  | "telegram"
+  | "reddit"
+  | "pinterest"
+  | "gmb"
+  | "slack"
+  | "discord"
+  | "mastodon"
+  | "bluesky"
+  | "lemmy"
+  | "nostr"
+  | "vk"
+  | "devto"
+  | "medium"
+  | "hashnode"
+  | "wordpress"
+  | "warpcast"
+  | "kick"
+  | "twitch"
+  | "dribbble";
 export type PostKind = "post" | "story" | "reel" | "video" | "thread";
 export type PostStatus = "draft" | "pending_approval" | "scheduled" | "publishing" | "published" | "partial" | "failed" | "cancelled";
 export type Role = "owner" | "admin" | "editor" | "viewer";
@@ -280,6 +305,8 @@ export interface Conversation {
   status: "open" | "closed";
   needsAttention: number;
   assignedTo: string | null;
+  /** Yorum konularında { kind: "comment", mediaId, commentId, parentId } */
+  metadata?: Record<string, unknown>;
 }
 
 export interface Message {
@@ -337,7 +364,17 @@ export interface OrgSettings {
   aiApiKeySet: boolean;
   aiBaseUrl: string;
   notifyOnFailureEmail: boolean;
+  /** Markalı rapor (panel/analytics/ReportPage) */
+  reportLogoUrl: string;
+  reportColor: string;
+  reportSections: ReportSection[];
+  reportIntro: string;
+  reportEmail: "off" | "weekly" | "monthly";
+  reportRecipients: string;
+  reportLastSent: string;
 }
+
+export type ReportSection = "summary" | "followers" | "networks" | "engagement" | "kinds" | "timing" | "topPosts" | "hashtags";
 
 export interface AiStatus {
   available: boolean;
@@ -503,6 +540,10 @@ export interface PublicConfig {
   publicUrl: string;
   mcpUrl: string;
   plans: PlanInfo[];
+  /** Sunucuda GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET tanımlıysa "Google ile devam et" görünür */
+  googleLogin?: boolean;
+  /** META_APP_ID + META_APP_SECRET tanımlıysa "Facebook ile devam et" görünür */
+  facebookLogin?: boolean;
 }
 
 export interface SystemInfo {
@@ -590,13 +631,31 @@ export interface OutboxMail {
 export const PROVIDER_COLOR: Record<ProviderId, string> = {
   instagram: "#E1306C",
   facebook: "#1877F2",
-  threads: "#444",
+  threads: "#000000",
   whatsapp: "#25D366",
-  x: "#333",
+  x: "#000000",
   linkedin: "#0A66C2",
-  tiktok: "#FE2C55",
+  tiktok: "#000000",
   youtube: "#FF0000",
   telegram: "#229ED9",
+  reddit: "#FF4500",
+  pinterest: "#E60023",
+  gmb: "#4285F4",
+  slack: "#4A154B",
+  discord: "#5865F2",
+  mastodon: "#6364FF",
+  bluesky: "#0085FF",
+  lemmy: "#2C3E50",
+  nostr: "#8E44AD",
+  vk: "#4680C2",
+  devto: "#0A0A0A",
+  medium: "#12100E",
+  hashnode: "#2962FF",
+  wordpress: "#21759B",
+  warpcast: "#472A91",
+  kick: "#53FC18",
+  twitch: "#9146FF",
+  dribbble: "#EA4C89",
 };
 
 export const PROVIDER_SHORT: Record<ProviderId, string> = {
@@ -609,6 +668,24 @@ export const PROVIDER_SHORT: Record<ProviderId, string> = {
   tiktok: "TT",
   youtube: "YT",
   telegram: "TG",
+  reddit: "RD",
+  pinterest: "PIN",
+  gmb: "GMB",
+  slack: "SL",
+  discord: "DC",
+  mastodon: "MS",
+  bluesky: "BS",
+  lemmy: "LM",
+  nostr: "NO",
+  vk: "VK",
+  devto: "DEV",
+  medium: "MED",
+  hashnode: "HN",
+  wordpress: "WP",
+  warpcast: "FC",
+  kick: "KC",
+  twitch: "TW",
+  dribbble: "DR",
 };
 
 export const PROVIDER_NAME: Record<ProviderId, string> = {
@@ -616,11 +693,167 @@ export const PROVIDER_NAME: Record<ProviderId, string> = {
   facebook: "Facebook",
   threads: "Threads",
   whatsapp: "WhatsApp",
-  x: "X",
+  x: "X (Twitter)",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
   youtube: "YouTube",
   telegram: "Telegram",
+  reddit: "Reddit",
+  pinterest: "Pinterest",
+  gmb: "Google Business",
+  slack: "Slack",
+  discord: "Discord",
+  mastodon: "Mastodon",
+  bluesky: "Bluesky",
+  lemmy: "Lemmy",
+  nostr: "Nostr",
+  vk: "VKontakte",
+  devto: "Dev.to",
+  medium: "Medium",
+  hashnode: "Hashnode",
+  wordpress: "WordPress",
+  warpcast: "Warpcast",
+  kick: "Kick",
+  twitch: "Twitch",
+  dribbble: "Dribbble",
 };
 
-export const DM_PROVIDERS: ProviderId[] = ["instagram", "facebook", "whatsapp", "telegram", "x"];
+export const DM_PROVIDERS: ProviderId[] = ["instagram", "facebook", "whatsapp", "telegram", "x", "slack"];
+
+/* ---------------- İş Akışları (Workflows) Tipleri ---------------- */
+
+export type WorkflowTriggerType =
+  | "webhook.inbound"
+  | "shopify.order_created"
+  | "shopify.cart_abandoned"
+  | "stripe.payment_succeeded"
+  | "forms.submission"
+  | "post.published"
+  | "post.failed"
+  | "post.scheduled"
+  | "message.received"
+  | "rss.new_item"
+  | "schedule.cron"
+  | "manual";
+
+export type WorkflowStepType =
+  | "filter"
+  | "paths"
+  | "formatter"
+  | "code"
+  | "looping"
+  | "ai"
+  | "sistemler"
+  | "delay"
+  | "action_post"
+  | "action_reply"
+  | "action_slack"
+  | "action_discord"
+  | "action_telegram"
+  | "action_calendar_event"
+  | "action_shopify"
+  | "action_webhook"
+  | "action_email"
+  | "action_notify";
+
+export type AppConnectorId =
+  | "shopify"
+  | "slack"
+  | "discord"
+  | "stripe"
+  | "google"
+  | "notion"
+  | "airtable"
+  | "reddit"
+  | "pinterest"
+  | "wordpress";
+
+export interface AppConnection {
+  id: string;
+  orgId: string;
+  appId: AppConnectorId;
+  name: string;
+  credentialsMasked: Record<string, string>;
+  metadata: Record<string, any>;
+  status: "active" | "error" | "revoked";
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowCondition {
+  field: string;
+  operator:
+    | "equals"
+    | "not_equals"
+    | "contains"
+    | "not_contains"
+    | "starts_with"
+    | "ends_with"
+    | "regex"
+    | "greater_than"
+    | "less_than"
+    | "is_empty"
+    | "is_not_empty";
+  value: string;
+}
+
+export interface WorkflowStep {
+  id: string;
+  type: WorkflowStepType;
+  name: string;
+  config: Record<string, any>;
+}
+
+export interface Workflow {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  enabled: number;
+  triggerType: WorkflowTriggerType;
+  triggerConfig: Record<string, any>;
+  webhookSlug: string | null;
+  steps: WorkflowStep[];
+  createdBy: string | null;
+  runCount: number;
+  lastRunAt: string | null;
+  lastStatus: "idle" | "success" | "failed" | "filtered" | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowStepExecution {
+  stepId: string;
+  name: string;
+  type: WorkflowStepType;
+  status: "success" | "failed" | "filtered" | "skipped";
+  input: any;
+  output: any;
+  durationMs: number;
+  error?: string | null;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  orgId: string;
+  triggerType: WorkflowTriggerType;
+  triggerPayload: Record<string, any>;
+  status: "running" | "success" | "failed" | "filtered";
+  error: string | null;
+  stepsExecuted: WorkflowStepExecution[];
+  durationMs: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  triggerType: WorkflowTriggerType;
+  triggerConfig: Record<string, any>;
+  steps: WorkflowStep[];
+}
+

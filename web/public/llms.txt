@@ -1,0 +1,19 @@
+# Reblebi
+
+> Türkçe ve İngilizce sosyal medya yönetim paneli. Instagram, Facebook, Threads, WhatsApp, X, LinkedIn, TikTok, YouTube ve Telegram için planlama ve yayın, birleşik gelen kutusu ve kurallı otomatik yanıt, AI içerik üretimi, ekip ve onay akışı. Claude, ChatGPT, Gemini, Grok ve Cursor gibi AI asistanları MCP (Model Context Protocol) ile panele bağlanabilir.
+
+Planlar: Ücretsiz ($0), Pro ($19/ay, yıllık $190), Ajans ($59/ay, yıllık $590). Her yeni hesap 14 gün Pro ile açılır; kayıt için kredi kartı gerekmez. Güncel fiyat ve limitler fiyat sayfasındadır.
+
+## Sayfalar
+
+- [Ana sayfa](https://reblebi.com/): özellikler, nasıl çalışır, SSS
+- [Fiyatlar](https://reblebi.com/fiyatlar): plan karşılaştırması
+- [MCP / AI asistan bağlantı rehberi](https://reblebi.com/docs/mcp): Claude, ChatGPT, Gemini, Grok ve Cursor kurulumu
+- [Gizlilik Politikası](https://reblebi.com/privacy)
+- [Kullanım Koşulları](https://reblebi.com/terms)
+
+## English
+
+- [Home](https://reblebi.com/en)
+- [Pricing](https://reblebi.com/en/pricing)
+- [MCP / AI assistant setup guide](https://reblebi.com/en/docs/mcp)

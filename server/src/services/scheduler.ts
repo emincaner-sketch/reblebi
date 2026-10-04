@@ -86,6 +86,8 @@ export async function snapshotAnalytics(force = false, orgId?: string): Promise<
         const fresh = await ensureFreshToken(channel);
         const metrics = await provider.fetchMetrics(fresh);
         if (Object.keys(metrics).length) analyticsRepo.upsert(channel.id, today, metrics);
+        // Tamamlanmış günlerin hesap insights'ı ve haftalık kitle kırılımı (izin yoksa sessizce geçer)
+        await collectChannelInsights(fresh);
       } catch (e) {
         log.warn("analitik alınamadı", { channel: channel.id, msg: e instanceof Error ? e.message : e });
       }
@@ -157,6 +159,16 @@ export async function dailyMaintenance(force = false): Promise<string | null> {
   return file;
 }
 
+import { checkCronWorkflows, checkRssWorkflows } from "./workflow-engine.js";
+import { sendScheduledReports } from "./report-email.js";
+import { collectChannelInsights } from "./insights.js";
+import { snapshotCompetitors } from "./competitors.js";
+import { syncAllAdAccounts } from "./ads.js";
+import { snapshotHashtags } from "./hashtag-tracker.js";
+import { runAutolists } from "./autolists.js";
+import { purgeSeen } from "./site-analytics.js";
+import { sendScheduledDashboards } from "./dashboard-email.js";
+
 export function startScheduler(): void {
   stopScheduler();
   const recovered = postsRepo.recoverStuck(10);
@@ -167,12 +179,30 @@ export function startScheduler(): void {
   timers.push(setInterval(() => void snapshotAnalytics(), 60 * 60_000));
   timers.push(setInterval(() => void tickPostMetrics(), 30 * 60_000));
   timers.push(setInterval(() => void dailyMaintenance(), 60 * 60_000));
+  timers.push(setInterval(() => void checkRssWorkflows(), 60_000));
+  timers.push(setInterval(() => void checkCronWorkflows(), 60_000));
+  // Haftalık / aylık e-posta raporu (çalışma alanı saatiyle 09:00 sonrası, dönem başına bir kez)
+  timers.push(setInterval(() => void guarded("reports", async () => void (await sendScheduledReports())), 15 * 60_000));
+  // Studio panolarının zamanlı e-postası (aynı kural: pazartesi / ayın 1'i 09:00 sonrası)
+  timers.push(setInterval(() => void guarded("dashboard-email", async () => void (await sendScheduledDashboards())), 15 * 60_000));
+  // Rakip takibi: günde bir anlık görüntü
+  timers.push(setInterval(() => void guarded("competitors", async () => void (await snapshotCompetitors())), 60 * 60_000));
+  // Reklam metrikleri: 6 saatte bir son 3 gün
+  timers.push(setInterval(() => void guarded("ads", async () => void (await syncAllAdAccounts())), 60 * 60_000));
+  // Hashtag takibi: günde bir ölçüm
+  timers.push(setInterval(() => void guarded("hashtags", async () => void (await snapshotHashtags())), 60 * 60_000));
+  // Web sitesi analitiği: 2 günden eski tekil-ziyaretçi hash'leri silinir
+  timers.push(setInterval(() => void guarded("site-seen", async () => purgeSeen()), 6 * 60 * 60_000));
+  // Otomatik listeler: dakikada bir vakti gelen slot (oluşan gönderiyi yayın kuyruğu yayınlar)
+  timers.push(setInterval(() => void guarded("autolists", async () => void (await runAutolists())), 60_000));
   setTimeout(() => void tickPublish(), 3_000);
   setTimeout(() => void tickPoll(), 5_000);
+  setTimeout(() => void checkRssWorkflows(), 10_000);
+  setTimeout(() => void checkCronWorkflows(), 15_000);
   setTimeout(() => void snapshotAnalytics(), 30_000);
   setTimeout(() => void tickPostMetrics(), 60_000);
   setTimeout(() => void dailyMaintenance(), 90_000);
-  log.info("zamanlayıcı aktif (yayın 20sn, poll 15sn, token 30dk, analitik 60dk, metrik 30dk, bakım günlük)");
+  log.info("zamanlayıcı aktif (yayın 20sn, poll 15sn, iş akışları 60sn, token 30dk, analitik 60dk, metrik 30dk, bakım günlük)");
 }
 
 export function stopScheduler(): void {

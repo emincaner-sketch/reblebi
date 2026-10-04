@@ -7,6 +7,7 @@ import { loadBrandContext } from "../../core/brand.js";
 import { webhooksRepo } from "../../core/repos/content.js";
 import { webhookEventsRepo } from "../../core/repos/misc.js";
 import { orgSettingsRepo, orgsRepo } from "../../core/repos/orgs.js";
+import { parseRecipients, REPORT_SECTIONS, sendTestReport } from "../../services/report-email.js";
 import { ALL_PROVIDERS, WEBHOOK_EVENTS, type OrgSettings, type ProviderId, type WebhookEvent } from "../../core/types.js";
 import { DEFAULT_MODELS, generateContent, improveText, platformAiAvailable, resolveAiConfig, testAi } from "../../ai/index.js";
 import { describeProvider, listProviders } from "../../providers/index.js";
@@ -15,6 +16,7 @@ import { assertFeature, hasFeature, usageSummary } from "../../services/limits.j
 import { testWebhook } from "../../services/notify.js";
 import { snapshotAnalytics } from "../../services/scheduler.js";
 import { analyticsOverview, dashboard } from "../../services/analytics.js";
+import { analyticsReport, bestTimes } from "../../services/analytics-report.js";
 import { describeSlots } from "../../services/slots.js";
 import { hhmmToMinutes } from "../../services/time.js";
 import { ctxOf, requireCtx } from "../context.js";
@@ -54,6 +56,20 @@ const SettingsSchema = z.object({
   aiApiKey: z.string().max(500).optional(),
   aiBaseUrl: z.string().max(300).optional(),
   notifyOnFailureEmail: z.boolean().optional(),
+  reportLogoUrl: z
+    .string()
+    .max(2000)
+    .refine((v) => v === "" || /^https:\/\//i.test(v) || v.startsWith("/media/"), "https:// | /media/")
+    .optional(),
+  reportColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  reportSections: z.array(z.enum(REPORT_SECTIONS)).max(REPORT_SECTIONS.length).optional(),
+  reportIntro: z.string().max(1500).optional(),
+  reportEmail: z.enum(["off", "weekly", "monthly"]).optional(),
+  reportRecipients: z
+    .string()
+    .max(1000)
+    .refine((v) => parseRecipients(v) !== null, "email list")
+    .optional(),
 });
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
@@ -81,6 +97,15 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (!/^https:\/\//i.test(body.aiBaseUrl)) throw new AppError(400, "err.validation", { detail: "aiBaseUrl must be https" });
     }
     return publicSettings(orgSettingsRepo.set(ctx.orgId, patch));
+  });
+
+  /* ---------------- Markalı rapor: test e-postası (yalnızca isteyen kişiye) ---------------- */
+
+  app.post("/api/reports/email/test", async (req) => {
+    const ctx = ctxOf(req);
+    requireRole(ctx, "editor");
+    if (!req.user?.email) throw new AppError(400, "err.validation", { detail: "session user required" });
+    return sendTestReport(ctx.orgId, req.user.email);
   });
 
   /* ---------------- AI ---------------- */
@@ -144,6 +169,33 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     return analyticsOverview(ctxOf(req).orgId, days);
   });
 
+  /** Panel analitik raporu: dönem + karşılaştırma, günlük seriler, ağ dağılımı, gönderi listesi (services/analytics-report.ts) */
+  app.get("/api/analytics/report", async (req) => {
+    const q = z
+      .object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        days: z.coerce.number().int().min(1).max(366).optional(),
+        provider: z.enum(ALL_PROVIDERS as [ProviderId, ...ProviderId[]]).optional(),
+        channelId: z.string().max(64).optional(),
+        campaignId: z.string().max(64).optional(),
+      })
+      .parse(req.query);
+    return analyticsReport(ctxOf(req).orgId, q);
+  });
+
+  /** Takvim katmanı: gün × saat ortalama etkileşim (services/analytics-report.ts → bestTimes) */
+  app.get("/api/analytics/best-times", async (req) => {
+    const q = z
+      .object({
+        days: z.coerce.number().int().min(7).max(366).optional(),
+        provider: z.enum(ALL_PROVIDERS as [ProviderId, ...ProviderId[]]).optional(),
+        channelId: z.string().max(64).optional(),
+      })
+      .parse(req.query);
+    return bestTimes(ctxOf(req).orgId, q);
+  });
+
   app.post("/api/analytics/refresh", { config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async (req) => {
     await snapshotAnalytics(true, ctxOf(req).orgId);
     return { ok: true };
@@ -204,7 +256,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       mcp: { url: `${config.publicUrl}/mcp`, enabled: hasFeature(ctx.orgId, "mcp") },
       webhooks: isAdmin ? { meta: { url: `${config.publicUrl}/webhooks/meta`, verifyToken: config.meta.webhookVerifyToken } } : null,
       oauthRedirects: isAdmin
-        ? Object.fromEntries(["meta", "threads", "x", "linkedin", "tiktok", "youtube"].map((p) => [p, `${config.publicUrl}/api/oauth/${p}/callback`]))
+        ? Object.fromEntries(["meta", "threads", "x", "linkedin", "tiktok", "youtube", "gmb"].map((p) => [p, `${config.publicUrl}/api/oauth/${p}/callback`]))
         : null,
       providers: listProviders().map(describeProvider),
       recentWebhooks: req.user?.isSuperadmin ? webhookEventsRepo.recent(20) : [],

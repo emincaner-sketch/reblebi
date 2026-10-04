@@ -4,6 +4,7 @@ import { Lock, X } from "lucide-react";
 import { PROVIDER_COLOR, PROVIDER_NAME, PROVIDER_SHORT, type Channel, type PlanFeature, type PostStatus, type ProviderId, type Quota, type Role } from "../lib/api";
 import { useLabels, useT } from "../lib/i18n";
 import { useOptionalSession } from "../lib/session";
+import { BrandSvg } from "./BrandIcons";
 
 /* ---------------- Toast ---------------- */
 
@@ -115,14 +116,39 @@ export function FeatureGate({ feature, has, children }: { feature: PlanFeature; 
 
 /* ---------------- Küçük parçalar ---------------- */
 
-export function ProviderIcon({ provider, size = 26 }: { provider: ProviderId; size?: number }) {
+export function ProviderIcon({ provider, size = 26 }: { provider: ProviderId | "shopify"; size?: number }) {
+  const iconSize = Math.round(size * 0.6);
+  const color = PROVIDER_COLOR[provider as ProviderId] ?? "#96bf48";
+  const name = PROVIDER_NAME[provider as ProviderId] ?? "Shopify";
+  const short = PROVIDER_SHORT[provider as ProviderId] ?? "SP";
+  const svg = BrandSvg({ id: provider, size: iconSize });
+
+  let background: string = color;
+  if (provider === "instagram" || (provider as string) === "meta") {
+    background = "radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%)";
+  } else if (provider === "tiktok" || provider === "x" || provider === "threads") {
+    background = "#000000";
+  }
+
   return (
     <span
       className="icon"
-      style={{ width: size, height: size, borderRadius: Math.round(size / 4), background: PROVIDER_COLOR[provider], color: "#fff", display: "inline-grid", placeItems: "center", fontWeight: 800, fontSize: Math.round(size * 0.4), flexShrink: 0 }}
-      title={PROVIDER_NAME[provider]}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.max(6, Math.round(size / 3.6)),
+        background,
+        color: "#ffffff",
+        display: "inline-grid",
+        placeItems: "center",
+        fontWeight: 800,
+        fontSize: Math.round(size * 0.4),
+        flexShrink: 0,
+        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.18)",
+      }}
+      title={name}
     >
-      {PROVIDER_SHORT[provider]}
+      {svg ?? short}
     </span>
   );
 }

@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CheckCheck, Hand, MessageSquare, Send, Sparkles, UserRound } from "lucide-react";
+import { Bot, CheckCheck, ExternalLink, Hand, MessageCircle, MessageSquare, Send, Sparkles, Star, UserRound } from "lucide-react";
 import { api, DM_PROVIDERS, errMsg, type Channel, type Conversation, type Member, type Message, type OrgInfo } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
 import { Avatar, Can, Empty, FeatureGate, Modal, PageHead, ProviderIcon, StatusBadge, useToast } from "../components/ui";
 
 type ConversationDetail = Conversation & { messages: Message[] };
+
+/** İşletme değerlendirmesi (Google Business Profile) */
+const isReview = (c: Conversation) => c.metadata?.kind === "review";
+/** Herkese açık konu: gönderi yorumu ya da değerlendirme ("Yorumlar" süzgeci, otomatik yanıt yok) */
+const isComment = (c: Conversation) => c.metadata?.kind === "comment" || isReview(c);
+
+/** Facebook gönderi kimliği "sayfa_gönderi" biçimindedir; Instagram medya kimliğinden adres çıkarılamaz */
+function postLink(c: Conversation): string | null {
+  const id = String(c.metadata?.mediaId ?? "");
+  return c.provider === "facebook" && /^\d+_\d+$/.test(id) ? `https://www.facebook.com/${id}` : null;
+}
 
 export default function InboxPage() {
   const { id } = useParams();
@@ -19,6 +30,7 @@ export default function InboxPage() {
   const s = useSession();
   const [filter, setFilter] = useState<"all" | "attention" | "mine" | "closed">("all");
   const [channelFilter, setChannelFilter] = useState("");
+  const [kind, setKind] = useState<"all" | "dm" | "comment">("all");
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
   const [summary, setSummary] = useState<string | null>(null);
@@ -101,7 +113,7 @@ export default function InboxPage() {
     <>
       <PageHead
         title={t("Gelen Kutusu")}
-        sub={t("Instagram DM, Messenger, WhatsApp, Telegram ve X mesajları tek yerde. Otomatik yanıtlar kurallara göre gider; istediğinde devral.")}
+        sub={t("DM'ler, Instagram/Facebook/YouTube yorumları ve Google işletme değerlendirmeleri tek yerde. Otomatik yanıtlar yalnızca mesajlara kurallara göre gider; istediğinde devral.")}
         actions={
           <>
             <button className="btn" onClick={() => summarize.mutate()} disabled={summarize.isPending}>
@@ -149,6 +161,13 @@ export default function InboxPage() {
                 </button>
               ))}
             </div>
+            <div className="segmented segmented-sm" style={{ width: "100%" }} role="group" aria-label={t("Tür")}>
+              {(["all", "dm", "comment"] as const).map((k) => (
+                <button key={k} className={kind === k ? "active" : ""} aria-pressed={kind === k} onClick={() => setKind(k)} style={{ flex: 1 }}>
+                  {{ all: t("Tümü"), dm: t("Mesajlar"), comment: t("Yorumlar") }[k]}
+                </button>
+              ))}
+            </div>
             <input className="input" placeholder={t("Kişi ya da mesaj ara…")} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t("Ara")} />
             <select className="select" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label={t("Kanal")}>
               <option value="">{t("Tüm kanallar")}</option>
@@ -161,7 +180,7 @@ export default function InboxPage() {
           </div>
           <div className="conv-list">
             {convs.data?.length === 0 && <Empty icon={<MessageSquare />} title={t("Konuşma yok")} text={t("Webhook'lar kurulunca mesajlar burada birikir.")} />}
-            {convs.data?.map((c) => (
+            {convs.data?.filter((c) => kind === "all" || (kind === "comment") === isComment(c)).map((c) => (
               <div key={c.id} className={`conv ${c.id === id ? "active" : ""}`} onClick={() => nav(`/app/inbox/${c.id}`)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && nav(`/app/inbox/${c.id}`)}>
                 <div style={{ position: "relative" }}>
                   <Avatar name={c.participantName ?? c.participantId} url={c.participantAvatar} size={38} />
@@ -179,7 +198,20 @@ export default function InboxPage() {
                     <span className="time">{f.ago(c.lastMessageAt)}</span>
                   </div>
                   <div className="row-between">
-                    <span className="prev truncate">{c.lastMessagePreview}</span>
+                    <span className="prev truncate">
+                      {isReview(c) ? (
+                        <span className="conv-kind" title={t("İşletme değerlendirmesi")}>
+                          <Star aria-hidden="true" /> {t("Değerlendirme")}
+                        </span>
+                      ) : (
+                        isComment(c) && (
+                          <span className="conv-kind" title={t("Gönderi yorumu")}>
+                            <MessageCircle aria-hidden="true" /> {t("Yorum")}
+                          </span>
+                        )
+                      )}
+                      {c.lastMessagePreview}
+                    </span>
                     {c.unread > 0 && <span className="unread">{c.unread}</span>}
                   </div>
                   {c.assignedTo && <div className="muted small truncate">→ {memberMap.get(c.assignedTo)?.name || memberMap.get(c.assignedTo)?.email || "?"}</div>}
@@ -199,7 +231,24 @@ export default function InboxPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600 }}>{d.participantName ?? d.participantId}</div>
                   <div className="muted small row" style={{ gap: 6 }}>
-                    {d.provider && <ProviderIcon provider={d.provider} size={14} />} {d.channelName} · <StatusBadge status={d.mode} /> {d.needsAttention ? <span className="badge badge-warn">{t("dikkat")}</span> : null}
+                    {d.provider && <ProviderIcon provider={d.provider} size={14} />} {d.channelName} · {isReview(d) ? (
+                      <span className="conv-kind">
+                        <Star aria-hidden="true" /> {t("İşletme değerlendirmesi")}
+                        {typeof d.metadata?.rating === "number" && <span aria-label={t("{n} yıldız", { n: d.metadata.rating as number })}>{" · "}{"★".repeat(d.metadata.rating as number)}</span>}
+                      </span>
+                    ) : isComment(d) ? (
+                      <span className="conv-kind">
+                        <MessageCircle aria-hidden="true" /> {t("Gönderi yorumu")}
+                        {postLink(d) && (
+                          <a href={postLink(d)!} target="_blank" rel="noreferrer" aria-label={t("Gönderiyi aç")}>
+                            <ExternalLink aria-hidden="true" />
+                          </a>
+                        )}
+                      </span>
+                    ) : (
+                      <StatusBadge status={d.mode} />
+                    )}{" "}
+                    {d.needsAttention ? <span className="badge badge-warn">{t("dikkat")}</span> : null}
                   </div>
                 </div>
                 <Can role="editor">
@@ -212,7 +261,7 @@ export default function InboxPage() {
                         </option>
                       ))}
                     </select>
-                    {d.mode === "auto" ? (
+                    {isComment(d) ? null : d.mode === "auto" ? (
                       <button className="btn btn-sm" onClick={() => patch.mutate({ mode: "manual" })}>
                         <UserRound /> {t("Devral")}
                       </button>
@@ -268,7 +317,7 @@ export default function InboxPage() {
                     className="textarea"
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    placeholder={d.mode === "auto" ? t("Yanıt yaz (Ctrl+Enter gönderir). Konuşma otomatik modda kalır; devralmak için 'Devral'.") : t("Yanıt yaz… (Ctrl+Enter gönderir)")}
+                    placeholder={isReview(d) ? t("Değerlendirmeyi yanıtla: yanıtın Google'da herkese açık görünür; yeni yanıt öncekinin yerine geçer (Ctrl+Enter gönderir).") : isComment(d) ? t("Yorumu yanıtla: yanıtın gönderinin altında herkese açık görünür (Ctrl+Enter gönderir).") : d.mode === "auto" ? t("Yanıt yaz (Ctrl+Enter gönderir). Konuşma otomatik modda kalır; devralmak için 'Devral'.") : t("Yanıt yaz… (Ctrl+Enter gönderir)")}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim()) reply.mutate();
                     }}

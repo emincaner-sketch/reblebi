@@ -1,31 +1,51 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { disablePush, enablePush, pushState, useInstallPrompt, type PushState } from "../lib/pwa";
 import {
   BarChart3,
+  BookMarked,
   Bell,
+  BellOff,
+  BellRing,
   CalendarDays,
   Check,
   ChevronsUpDown,
   CreditCard,
+  FileText,
+  FileUp,
+  Globe2,
+  Grid3x3,
   Flag,
+  Hash,
   Image,
+  Link2,
+  Trash2,
   Inbox,
   LayoutDashboard,
+  LayoutGrid,
+  ListRestart,
   LogOut,
+  MonitorDown,
+  Megaphone,
+  Menu,
   Moon,
+  PenSquare,
   PlugZap,
   Plus,
   Settings,
   Shield,
   Sun,
   Users,
+  X,
   Zap,
 } from "lucide-react";
-import { api, errMsg, type Dashboard, type Notification } from "../lib/api";
+import { api, errMsg, PROVIDER_NAME, type Channel, type Dashboard, type Notification, type ProviderId } from "../lib/api";
 import { useI18n, useLabels } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
-import { Modal, TIMEZONES, useLocalState, useToast } from "./ui";
+import { LogoMark } from "./Logo";
+import { Avatar, Modal, ProviderIcon, TIMEZONES, useLocalState, useToast } from "./ui";
+import "../panel/shell.css";
 
 function useOutside(ref: RefObject<HTMLElement | null>, onOut: () => void) {
   useEffect(() => {
@@ -35,6 +55,20 @@ function useOutside(ref: RefObject<HTMLElement | null>, onOut: () => void) {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [ref, onOut]);
+}
+
+/** Açık menü Escape ile kapanır, odak tetikleyiciye döner */
+function useEscape(open: boolean, close: () => void, trigger: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close();
+      trigger.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, close, trigger]);
 }
 
 function OrgSwitcher() {
@@ -47,7 +81,9 @@ function OrgSwitcher() {
   const [name, setName] = useState("");
   const [tz, setTz] = useState(s.org.timezone);
   const ref = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
   useOutside(ref, () => setOpen(false));
+  useEscape(open, () => setOpen(false), btn);
 
   const create = useMutation({
     mutationFn: () => api.post<{ id: string }>("/api/auth/orgs", { name, timezone: tz, locale }),
@@ -62,7 +98,7 @@ function OrgSwitcher() {
 
   return (
     <div className="org-switch" ref={ref}>
-      <button className="org-btn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
+      <button ref={btn} className="org-btn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
         <div className="brand-logo">{s.org.name.slice(0, 1).toUpperCase()}</div>
         <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
           <div className="brand-name truncate">{s.org.name}</div>
@@ -148,7 +184,9 @@ function NotificationBell() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
   useOutside(ref, () => setOpen(false));
+  useEscape(open, () => setOpen(false), btn);
   const q = useQuery({ queryKey: ["notifications"], queryFn: () => api.get<{ items: Notification[]; unread: number }>("/api/notifications"), refetchInterval: 30_000 });
   const markRead = useMutation({ mutationFn: () => api.post("/api/notifications/read"), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
   const unread = q.data?.unread ?? 0;
@@ -157,8 +195,10 @@ function NotificationBell() {
   return (
     <div className="notif" ref={ref}>
       <button
-        className="btn btn-ghost btn-icon"
-        aria-label={t("Bildirimler")}
+        ref={btn}
+        className="pn-icon-btn"
+        aria-label={unread > 0 ? t("Bildirimler ({n} okunmamış)", { n: unread }) : t("Bildirimler")}
+        aria-expanded={open}
         onClick={() => {
           setOpen(!open);
           if (!open && unread > 0) markRead.mutate();
@@ -168,7 +208,7 @@ function NotificationBell() {
         {unread > 0 && <span className="notif-dot">{unread > 9 ? "9+" : unread}</span>}
       </button>
       {open && (
-        <div className="menu menu-wide" role="menu">
+        <div className="menu menu-wide pn-pop" role="menu">
           <div className="menu-label">{t("Bildirimler")}</div>
           {!q.data?.items.length && <div className="muted small" style={{ padding: 12 }}>{t("Bildirim yok")}</div>}
           <div style={{ maxHeight: 380, overflow: "auto" }}>
@@ -231,17 +271,133 @@ function Banners() {
   );
 }
 
-export default function Shell({ children }: { children: ReactNode }) {
+/* ---------------- Gezinme haritası (docs/panel/03-PANEL-TASARIM.md §3) ---------------- */
+
+type Section = "home" | "analytics" | "planning" | "inbox" | "automation" | "account";
+
+function sectionOf(pathname: string): Section {
+  const p = pathname.replace(/\/+$/, "");
+  if (p === "/app") return "home";
+  if (p.startsWith("/app/analytics")) return "analytics";
+  if (p.startsWith("/app/posts") || p.startsWith("/app/campaigns") || p.startsWith("/app/media") || p.startsWith("/app/bio") || p.startsWith("/app/library")) return "planning";
+  if (p.startsWith("/app/inbox")) return "inbox";
+  if (p.startsWith("/app/automation")) return "automation";
+  return "account";
+}
+
+interface NavItem {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  end?: boolean;
+  badge?: { n: number; tone?: "warn" };
+  active?: boolean;
+}
+
+function SideLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
+  const cls = ({ isActive }: { isActive: boolean }) => `pn-side-link${(item.active ?? isActive) ? " active" : ""}`;
+  return (
+    <NavLink to={item.to} end={item.end} className={cls} onClick={onNavigate} aria-current={item.active ? "page" : undefined}>
+      {item.icon}
+      <span className="truncate">{item.label}</span>
+      {item.badge && item.badge.n > 0 && <span className={`nav-badge${item.badge.tone === "warn" ? " nav-badge-warn" : ""}`}>{item.badge.n}</span>}
+    </NavLink>
+  );
+}
+
+function useSidebar(section: Section, d: Dashboard | undefined): Array<{ title?: string; items: NavItem[]; action?: ReactNode }> | null {
+  const s = useSession();
+  const { t } = useI18n();
+  const loc = useLocation();
+  const channels = useQuery({ queryKey: ["channels"], queryFn: () => api.get<Channel[]>("/api/channels"), enabled: section === "analytics", staleTime: 60_000 });
+  const pending = d?.posts.pendingApproval ?? 0;
+
+  if (section === "analytics") {
+    const params = new URLSearchParams(loc.search);
+    const current = params.get("network");
+    const onReport = loc.pathname.startsWith("/app/analytics/report");
+    const onCompetitors = loc.pathname.startsWith("/app/analytics/competitors");
+    const onAds = loc.pathname.startsWith("/app/analytics/ads");
+    const onTags = loc.pathname.startsWith("/app/analytics/hashtags");
+    const onStudio = loc.pathname.startsWith("/app/analytics/studio");
+    const onSite = loc.pathname.startsWith("/app/analytics/website");
+    // Ağ bağlantıları bulunulan sayfada kalır: raporda ağ seçmek raporu süzer
+    const keep = (network: string | null, base = onReport ? "/app/analytics/report" : "/app/analytics") => {
+      // Rakipler sayfasında ağ seçimi analitiğe döner
+      const next = new URLSearchParams(params);
+      if (network) next.set("network", network);
+      else next.delete("network");
+      const qs = next.toString();
+      return `${base}${qs ? `?${qs}` : ""}`;
+    };
+    const providers = [...new Set((channels.data ?? []).map((c) => c.provider))] as ProviderId[];
+    return [
+      {
+        items: [
+          { to: keep(null, "/app/analytics"), label: t("Özet"), icon: <LayoutDashboard />, active: !current && !onReport && !onCompetitors && !onAds && !onTags && !onStudio && !onSite },
+          { to: keep(current, "/app/analytics/report"), label: t("Rapor"), icon: <FileText />, active: onReport },
+          { to: "/app/analytics/studio", label: t("Studio"), icon: <LayoutGrid />, active: onStudio },
+          { to: "/app/analytics/competitors", label: t("Rakipler"), icon: <Users />, active: onCompetitors },
+          { to: "/app/analytics/hashtags", label: t("Hashtag takibi"), icon: <Hash />, active: onTags },
+          { to: "/app/analytics/ads", label: t("Reklamlar"), icon: <Megaphone />, active: onAds },
+          { to: "/app/analytics/website", label: t("Web sitesi"), icon: <Globe2 />, active: onSite },
+        ],
+      },
+      {
+        title: t("Ağlar"),
+        items: providers.map((p) => ({ to: keep(p), label: PROVIDER_NAME[p], icon: <ProviderIcon provider={p} size={20} />, active: current === p && !onCompetitors && !onAds && !onTags && !onStudio && !onSite })),
+        action: (
+          <Link to="/app/channels" className="pn-side-add">
+            <Plus aria-hidden="true" /> {t("Kanal bağla")}
+          </Link>
+        ),
+      },
+    ];
+  }
+  if (section === "planning") {
+    return [
+      {
+        items: [
+          { to: "/app/posts", label: t("Takvim ve liste"), icon: <CalendarDays />, end: true, badge: s.can("admin") ? { n: pending, tone: "warn" } : undefined },
+          { to: "/app/posts/new", label: t("Yeni gönderi"), icon: <PenSquare /> },
+          { to: "/app/campaigns", label: t("Kampanyalar"), icon: <Flag /> },
+          { to: "/app/library", label: t("Kütüphane"), icon: <BookMarked /> },
+          { to: "/app/posts/grid", label: t("Instagram ızgarası"), icon: <Grid3x3 /> },
+          { to: "/app/posts/autolists", label: t("Otomatik listeler"), icon: <ListRestart /> },
+          { to: "/app/posts/import", label: t("Toplu yükleme (CSV)"), icon: <FileUp /> },
+          { to: "/app/media", label: t("Medya"), icon: <Image /> },
+          { to: "/app/bio", label: t("Link in bio"), icon: <Link2 /> },
+          { to: "/app/posts/trash", label: t("Silinenler"), icon: <Trash2 /> },
+        ],
+      },
+    ];
+  }
+  if (section === "account") {
+    return [
+      {
+        title: t("Hesap"),
+        items: [
+          { to: "/app/channels", label: t("Kanallar"), icon: <PlugZap />, badge: d && d.channels.problem > 0 ? { n: d.channels.problem } : undefined },
+          { to: "/app/team", label: t("Ekip"), icon: <Users /> },
+          { to: "/app/billing", label: t("Plan & kullanım"), icon: <CreditCard /> },
+          { to: "/app/settings", label: t("Ayarlar"), icon: <Settings /> },
+          ...(s.user.isSuperadmin ? [{ to: "/app/admin", label: t("Süper admin"), icon: <Shield /> }] : []),
+        ],
+      },
+    ];
+  }
+  return null;
+}
+
+/** Sağ üst kullanıcı menüsü: hesap sayfaları, tema, dil, çıkış (Metricool'un hamburger menüsünün karşılığı) */
+function UserMenu({ theme, setTheme, problems }: { theme: "light" | "dark"; setTheme: (t: "light" | "dark") => void; problems: number }) {
   const s = useSession();
   const { t, locale, setLocale } = useI18n();
-  const [theme, setTheme] = useLocalState<"dark" | "light">("sp_theme", "dark");
-  const dash = useQuery({ queryKey: ["dashboard"], queryFn: () => api.get<Dashboard>("/api/dashboard"), refetchInterval: 30_000 });
-  const d = dash.data;
-
-  useEffect(() => {
-    if (theme === "light") document.documentElement.dataset.theme = "light";
-    else delete document.documentElement.dataset.theme;
-  }, [theme]);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  useOutside(ref, () => setOpen(false));
+  useEscape(open, () => setOpen(false), btn);
 
   const changeLocale = (l: "tr" | "en") => {
     setLocale(l);
@@ -250,87 +406,213 @@ export default function Shell({ children }: { children: ReactNode }) {
       .then(() => s.refresh())
       .catch(() => {});
   };
+  const pwa = useInstallPrompt();
+  const [push, setPush] = useState<PushState>("unsupported");
+  const [pushBusy, setPushBusy] = useState(false);
+  useEffect(() => {
+    if (open) void pushState().then(setPush);
+  }, [open]);
+  const togglePush = async () => {
+    setPushBusy(true);
+    try {
+      setPush(push === "on" ? await disablePush(api) : await enablePush(api));
+    } catch {
+      setPush(await pushState());
+    } finally {
+      setPushBusy(false);
+    }
+  };
+  const item = (to: string, icon: ReactNode, label: string, badge?: number) => (
+    <NavLink to={to} className="menu-item" role="menuitem" onClick={() => setOpen(false)}>
+      {icon}
+      <span style={{ flex: 1 }}>{label}</span>
+      {badge ? <span className="nav-badge">{badge}</span> : null}
+    </NavLink>
+  );
+
+  return (
+    <div className="pn-user" ref={ref}>
+      <button ref={btn} className="pn-user-btn" aria-haspopup="menu" aria-expanded={open} aria-label={t("Hesap menüsü")} onClick={() => setOpen(!open)}>
+        <Avatar name={s.user.name || s.user.email} size={30} />
+        {problems > 0 && <span className="pn-user-dot" aria-hidden="true" />}
+      </button>
+      {open && (
+        <div className="menu pn-pop pn-user-menu" role="menu">
+          <div className="pn-user-head">
+            <strong className="truncate">{s.user.name || s.user.email}</strong>
+            <span className="muted small truncate">{s.user.email}</span>
+          </div>
+          <div className="menu-sep" />
+          {item("/app/channels", <PlugZap />, t("Kanallar"), problems)}
+          {item("/app/team", <Users />, t("Ekip"))}
+          {item("/app/billing", <CreditCard />, t("Plan & kullanım"))}
+          {item("/app/settings", <Settings />, t("Ayarlar"))}
+          {s.user.isSuperadmin && item("/app/admin", <Shield />, t("Süper admin"))}
+          <div className="menu-sep" />
+          <div className="pn-user-row">
+            <span>{t("Tema")}</span>
+            <div className="segmented segmented-sm" role="group" aria-label={t("Tema")}>
+              <button className={theme === "light" ? "active" : ""} aria-pressed={theme === "light"} onClick={() => setTheme("light")}>
+                <Sun aria-hidden="true" /> {t("Açık")}
+              </button>
+              <button className={theme === "dark" ? "active" : ""} aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>
+                <Moon aria-hidden="true" /> {t("Koyu")}
+              </button>
+            </div>
+          </div>
+          <div className="pn-user-row">
+            <span>{t("Dil")}</span>
+            <div className="segmented segmented-sm" role="group" aria-label={t("Dil")}>
+              <button className={locale === "tr" ? "active" : ""} aria-pressed={locale === "tr"} onClick={() => changeLocale("tr")}>
+                TR
+              </button>
+              <button className={locale === "en" ? "active" : ""} aria-pressed={locale === "en"} onClick={() => changeLocale("en")}>
+                EN
+              </button>
+            </div>
+          </div>
+          <div className="menu-sep" />
+          {(push === "on" || push === "off") && (
+            <button className="menu-item" role="menuitem" disabled={pushBusy} onClick={() => void togglePush()}>
+              {push === "on" ? <BellOff /> : <BellRing />} {push === "on" ? t("Bu cihazda bildirimleri kapat") : t("Bu cihazda bildirimleri aç")}
+            </button>
+          )}
+          {push === "denied" && <p className="menu-note muted small">{t("Bildirimler tarayıcıda engellenmiş; site ayarlarından izin verebilirsin.")}</p>}
+          {push === "needs-install" && <p className="menu-note muted small">{t("iPhone/iPad'de bildirim için önce Paylaş > Ana Ekrana Ekle ile uygulamayı yükle.")}</p>}
+          {pwa.canInstall && (
+            <button className="menu-item" role="menuitem" onClick={() => (setOpen(false), void pwa.install())}>
+              <MonitorDown /> {t("Uygulamayı yükle")}
+            </button>
+          )}
+          <button className="menu-item" role="menuitem" onClick={() => s.logout()}>
+            <LogOut /> {t("Çıkış")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Shell({ children }: { children: ReactNode }) {
+  const s = useSession();
+  const { t } = useI18n();
+  const loc = useLocation();
+  const [theme, setTheme] = useLocalState<"dark" | "light">("sp_theme", "light");
+  const [drawer, setDrawer] = useState(false);
+  const burger = useRef<HTMLButtonElement>(null);
+  const dash = useQuery({ queryKey: ["dashboard"], queryFn: () => api.get<Dashboard>("/api/dashboard"), refetchInterval: 30_000 });
+  const d = dash.data;
+  const section = sectionOf(loc.pathname);
+  const sidebar = useSidebar(section, d);
+
+  // Tema yalnızca panelde: herkese açık sayfalara geçince kalkar
+  useEffect(() => {
+    if (theme === "dark") document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
+    return () => {
+      delete document.documentElement.dataset.theme;
+    };
+  }, [theme]);
+
+  useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
+  useEscape(drawer, () => setDrawer(false), burger);
+  useEffect(() => {
+    if (!drawer) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [drawer]);
 
   const attention = d?.inbox.attention ?? 0;
   const unread = d?.inbox.unread ?? 0;
   const pending = d?.posts.pendingApproval ?? 0;
+  const problems = d?.channels.problem ?? 0;
+
+  const sections: Array<NavItem & { key: Section }> = [
+    { key: "home", to: "/app", end: true, label: t("Panel"), icon: <LayoutDashboard /> },
+    { key: "analytics", to: "/app/analytics", label: t("Analitik"), icon: <BarChart3 /> },
+    { key: "planning", to: "/app/posts", label: t("Planlama"), icon: <CalendarDays />, badge: s.can("admin") ? { n: pending, tone: "warn" } : undefined },
+    { key: "inbox", to: "/app/inbox", label: t("Gelen Kutusu"), icon: <Inbox />, badge: { n: attention > 0 ? attention : unread } },
+    { key: "automation", to: "/app/automation", label: t("Otomasyon"), icon: <Zap /> },
+  ];
+
+  const sideNav = (onNavigate?: () => void) =>
+    sidebar?.map((g, i) => (
+      <div key={i} className="pn-side-group">
+        {g.title && <div className="pn-side-title">{g.title}</div>}
+        {g.items.map((it) => (
+          <SideLink key={it.to + it.label} item={it} onNavigate={onNavigate} />
+        ))}
+        {g.action}
+      </div>
+    ));
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <OrgSwitcher />
-        <nav className="nav">
-          <NavLink to="/app" end className="nav-link">
-            <LayoutDashboard /> {t("Panel")}
-          </NavLink>
-          <NavLink to="/app/channels" className="nav-link">
-            <PlugZap /> {t("Kanallar")} {d && d.channels.problem > 0 && <span className="nav-badge">{d.channels.problem}</span>}
-          </NavLink>
-          <NavLink to="/app/posts" className="nav-link">
-            <CalendarDays /> {t("Gönderiler")} {pending > 0 && s.can("admin") && <span className="nav-badge nav-badge-warn">{pending}</span>}
-          </NavLink>
-          <NavLink to="/app/campaigns" className="nav-link">
-            <Flag /> {t("Kampanyalar")}
-          </NavLink>
-          <NavLink to="/app/inbox" className="nav-link">
-            <Inbox /> {t("Gelen Kutusu")} {(attention > 0 || unread > 0) && <span className="nav-badge">{attention > 0 ? attention : unread}</span>}
-          </NavLink>
-          <NavLink to="/app/automation" className="nav-link">
-            <Zap /> {t("Otomasyon")}
-          </NavLink>
-          <NavLink to="/app/analytics" className="nav-link">
-            <BarChart3 /> {t("Analitik")}
-          </NavLink>
-          <NavLink to="/app/media" className="nav-link">
-            <Image /> {t("Medya")}
-          </NavLink>
-          <div className="nav-sep" />
-          <NavLink to="/app/team" className="nav-link">
-            <Users /> {t("Ekip")}
-          </NavLink>
-          <NavLink to="/app/billing" className="nav-link">
-            <CreditCard /> {t("Plan & kullanım")}
-          </NavLink>
-          <NavLink to="/app/settings" className="nav-link">
-            <Settings /> {t("Ayarlar")}
-          </NavLink>
-          {s.user.isSuperadmin && (
-            <NavLink to="/app/admin" className="nav-link">
-              <Shield /> {t("Süper admin")}
-            </NavLink>
-          )}
-        </nav>
-        <div className="sidebar-footer">
-          <div className="row-between">
-            <span className="truncate" title={s.user.email} style={{ maxWidth: 130 }}>
-              {s.user.name || s.user.email}
-            </span>
-            <div className="row" style={{ gap: 2 }}>
-              <NotificationBell />
-              <button className="btn btn-ghost btn-icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("Tema")}>
-                {theme === "dark" ? <Sun /> : <Moon />}
-              </button>
-            </div>
-          </div>
-          <div className="row-between">
-            <div className="segmented segmented-sm" role="group" aria-label={t("Dil")}>
-              <button className={locale === "tr" ? "active" : ""} onClick={() => changeLocale("tr")}>
-                TR
-              </button>
-              <button className={locale === "en" ? "active" : ""} onClick={() => changeLocale("en")}>
-                EN
-              </button>
-            </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => s.logout()}>
-              <LogOut /> {t("Çıkış")}
+    <div className="pn">
+      <a className="pn-skip" href="#pn-main">
+        {t("İçeriğe geç")}
+      </a>
+      <header className="pn-top">
+        <div className="pn-top-in">
+          <Link to="/app" className="pn-logo" aria-label={t("Panel")}>
+            <LogoMark size={28} />
+          </Link>
+          <OrgSwitcher />
+          <nav className="pn-sections" aria-label={t("Ana bölümler")}>
+            {sections.map((it) => (
+              <NavLink key={it.key} to={it.to} end={it.end} className={() => `pn-sec${section === it.key ? " active" : ""}`} aria-current={section === it.key ? "page" : undefined}>
+                {it.icon}
+                <span>{it.label}</span>
+                {it.badge && it.badge.n > 0 && <span className={`nav-badge${it.badge.tone === "warn" ? " nav-badge-warn" : ""}`}>{it.badge.n}</span>}
+              </NavLink>
+            ))}
+          </nav>
+          <div className="pn-top-actions">
+            <Link to="/app/posts/new" className="btn btn-primary btn-sm pn-new">
+              <Plus aria-hidden="true" /> <span>{t("Yeni gönderi")}</span>
+            </Link>
+            <NotificationBell />
+            <UserMenu theme={theme} setTheme={setTheme} problems={problems} />
+            <button ref={burger} className="pn-icon-btn pn-burger" aria-label={t("Menü")} aria-expanded={drawer} aria-controls="pn-drawer" onClick={() => setDrawer(true)}>
+              <Menu />
             </button>
           </div>
         </div>
-      </aside>
-      <main className="main">
-        <Banners />
-        {children}
-      </main>
+      </header>
+
+      <div className={`pn-body${sidebar ? " pn-body--side" : ""}`}>
+        {sidebar && (
+          <aside className="pn-side" aria-label={t("Bölüm menüsü")}>
+            {sideNav()}
+          </aside>
+        )}
+        <main className="pn-main" id="pn-main" tabIndex={-1}>
+          <Banners />
+          {children}
+        </main>
+      </div>
+
+      {drawer && (
+        <div className="pn-drawer-wrap" onClick={(e) => e.target === e.currentTarget && setDrawer(false)}>
+          <div id="pn-drawer" className="pn-drawer" role="dialog" aria-modal="true" aria-label={t("Menü")}>
+            <div className="pn-drawer-head">
+              <LogoMark size={26} />
+              <button className="pn-icon-btn" aria-label={t("Menüyü kapat")} onClick={() => setDrawer(false)} autoFocus>
+                <X />
+              </button>
+            </div>
+            <nav aria-label={t("Ana bölümler")} className="pn-drawer-nav">
+              <SideLink item={{ to: "/app/posts/new", label: t("Yeni gönderi"), icon: <PenSquare /> }} onNavigate={() => setDrawer(false)} />
+              {sections.map((it) => (
+                <SideLink key={it.key} item={{ ...it, active: section === it.key }} onNavigate={() => setDrawer(false)} />
+              ))}
+            </nav>
+            {sidebar && <div className="pn-drawer-nav">{sideNav(() => setDrawer(false))}</div>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

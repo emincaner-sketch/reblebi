@@ -1,6 +1,6 @@
 # Yayına alma ve satışa açma
 
-Bu rehber SosyalPilot'u bir sunucuya kurup başka kullanıcılara (müşterilere) açman için gereken her adımı sırayla anlatır. Platform başına geliştirici uygulaması açma ayrıntıları [KURULUM.md](KURULUM.md)'de.
+Bu rehber Reblebi'yi bir sunucuya kurup başka kullanıcılara (müşterilere) açman için gereken her adımı sırayla anlatır. Platform başına geliştirici uygulaması açma ayrıntıları [KURULUM.md](KURULUM.md)'de.
 
 ---
 
@@ -235,7 +235,25 @@ Herkese açık rehber sayfası: `https://panel.markan.com/docs/mcp`. Claude, Cha
 Müşteri açısından akış:
 
 1. AI uygulamasına `https://panel.markan.com/mcp` adresini ekler.
-2. Açılan SosyalPilot ekranında giriş yapar, çalışma alanını seçer ve izin verir.
+2. Açılan Reblebi ekranında giriş yapar, çalışma alanını seçer ve izin verir.
 3. Sohbette "önümüzdeki hafta için 5 gönderilik plan kur" der; asistan gönderileri boş saatlere yerleştirir.
 4. Onay modu açıksa gönderiler panelde onay bekler; değilse zamanı gelince yayınlanır.
 5. Erişimi istediği an **Ayarlar > Bağlantılar**'dan kaldırabilir.
+
+---
+
+## 9. Arama motoru (SEO) ve marka
+
+Herkese açık sayfalar (`/`, `/en`, `/fiyatlar`, `/docs/mcp`, `/privacy`, `/terms`, `/data-deletion` ve `/en/...` karşılıkları) `npm run build` sırasında HTML'e çevrilir. Sunucu bu sayfaları, `robots.txt`, `sitemap.xml` ve `llms.txt` dosyalarını gerçek dosya olarak verir; bilinmeyen adresler 404 döner. Ayrıntı: [SEO.md](SEO.md), tasarım: [DESIGN.md](DESIGN.md).
+
+**Yayından sonra bir kez yapılacaklar:**
+
+1. Railway'de `APP_NAME` değişkeni tanımlıysa `Reblebi` yap ya da sil (varsayılan artık Reblebi). `MAIL_FROM` içindeki adı da güncelle.
+2. `PUBLIC_URL` ve `APP_URL` değerlerinin `https://reblebi.com` olduğundan emin ol (sitemap ve canonical bu alan adını kullanır).
+3. [Google Search Console](https://search.google.com/search-console)'a `reblebi.com` alan adı mülkünü ekle (DNS TXT kaydıyla), `https://reblebi.com/sitemap.xml` adresini gönder, URL denetimiyle `/` ve `/en` için dizine ekleme iste.
+4. [Bing Webmaster Tools](https://www.bing.com/webmasters)'a aynı siteyi ekle (Search Console'dan içe aktarılabilir).
+5. [Rich Results Test](https://search.google.com/test/rich-results) ile `/` ve `/fiyatlar` sayfalarını dene. Not: SoftwareApplication için Google zengin sonuç göstermek üzere puan (aggregateRating) ister; gerçek yorum olmadan eklenmedi, bu uyarı beklenen bir durumdur.
+6. [opengraph.xyz](https://www.opengraph.xyz) ile `https://reblebi.com/` ve `/en` paylaşım önizlemesini kontrol et; WhatsApp ve LinkedIn önbelleği eski görseli gösteriyorsa LinkedIn Post Inspector ile yenile.
+7. Meta, TikTok ve Google geliştirici panellerinde uygulama adını ve logoyu Reblebi olarak güncelle (OAuth onay ekranında görünen ad).
+
+**Görseller:** `web/public/og/*.png`, ikonlar ve `favicon.ico` bir kez üretilip depoya eklendi. Logo değişirse `web/scripts/brand-assets.mjs` dosyasının başındaki komutla yeniden üret. Gerçek panel ekran görüntüsü hazır olduğunda `web/src/landing/Hero.tsx` içindeki `HERO_SCREENSHOT` sabitine yolunu yaz.

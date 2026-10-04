@@ -9,6 +9,8 @@ import { postNotesRepo, previewLinksRepo } from "../../core/repos/content.js";
 import { activityRepo, mediaRepo, platformSettingsRepo, webhookEventsRepo } from "../../core/repos/misc.js";
 import { orgsRepo } from "../../core/repos/orgs.js";
 import { postsRepo } from "../../core/repos/posts.js";
+import { googleLoginEnabled } from "../../services/google-login.js";
+import { facebookLoginEnabled } from "../../services/facebook-login.js";
 import { parseMetaWebhook, parseSignedRequest } from "../../providers/index.js";
 import { handleInbound } from "../../services/dm-engine.js";
 import { publicMedia } from "../../services/media.js";
@@ -39,6 +41,8 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
     publicUrl: config.publicUrl,
     mcpUrl: `${config.publicUrl}/mcp`,
     plans: publicPlans(),
+    googleLogin: googleLoginEnabled(),
+    facebookLogin: facebookLoginEnabled(),
   }));
 
   /* ---------------- Müşteri önizleme linki (giriş gerektirmez) ---------------- */

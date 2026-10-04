@@ -1,8 +1,8 @@
 import { config } from "../../core/config.js";
 import type { Channel } from "../../core/types.js";
 import { http } from "../http.js";
-import { ProviderError, type Provider, type PublishInput, type PublishResult } from "../types.js";
-import { GRAPH, graph, metaOAuthCallback, metaOAuthStart, sendPageMessage } from "./common.js";
+import { ProviderError, type AudienceBreakdown, type Provider, type PublishInput, type PublishResult } from "../types.js";
+import { fetchInsights, GRAPH, graph, insightNumber, metaOAuthCallback, metaOAuthStart, sendPageMessage } from "./common.js";
 
 async function uploadUnpublishedPhoto(pageId: string, token: string, url: string): Promise<string> {
   const r = await graph<{ id: string }>(`/${pageId}/photos`, token, { method: "POST", params: { url, published: false } });
@@ -171,11 +171,52 @@ export const facebookProvider: Provider = {
       channel.accessToken,
       { params: { fields: "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares" } },
     );
-    return {
+    const m: Record<string, number> = {
       likes: Number(r.reactions?.summary?.total_count ?? 0),
       comments: Number(r.comments?.summary?.total_count ?? 0),
       shares: Number(r.shares?.count ?? 0),
     };
+    // Gönderi insights (read_insights): erişim, tıklama, video görüntülenme; izin yoksa temel metrikler kalır
+    const rows = await fetchInsights(`/${externalId}/insights`, channel.accessToken, ["post_impressions_unique", "post_clicks", "post_video_views"], {});
+    const names: Record<string, string> = { post_impressions_unique: "reach", post_clicks: "clicks", post_video_views: "views" };
+    for (const [name, row] of rows) {
+      const v = insightNumber(row);
+      if (v !== null && names[name]) m[names[name]] = v;
+    }
+    return m;
+  },
+
+  async fetchDailyInsights(channel: Channel, range: { since: number; until: number }) {
+    const out: Record<string, number> = {};
+    // Meta sayfa metriklerini zaman zaman yeniden adlandırıyor: yeni ad önce, eski ad yedek
+    const names: Record<string, string> = {
+      page_impressions_unique: "reach",
+      page_media_view: "views",
+      page_views_total: "profileViews",
+      page_daily_follows_unique: "follows",
+      page_daily_unfollows_unique: "unfollows",
+      page_post_engagements: "engaged",
+    };
+    const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, Object.keys(names), { period: "day", since: range.since, until: range.until });
+    for (const [name, row] of rows) {
+      const v = insightNumber(row);
+      if (v !== null && names[name] && out[names[name]] === undefined) out[names[name]] = v;
+    }
+    return out;
+  },
+
+  async fetchAudience(channel: Channel) {
+    const out: AudienceBreakdown = {};
+    const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, ["page_fans_country", "page_fans_city"], { period: "lifetime" });
+    for (const [name, key] of [
+      ["page_fans_country", "country"],
+      ["page_fans_city", "city"],
+    ] as const) {
+      const vals = rows.get(name)?.values ?? [];
+      const last = vals[vals.length - 1]?.value;
+      if (last && typeof last === "object" && Object.keys(last).length) out[key] = last;
+    }
+    return out;
   },
 
   async healthCheck(channel: Channel) {
@@ -189,3 +230,48 @@ export const facebookProvider: Provider = {
 };
 
 export { GRAPH };
+
+/* ---------------- Rakip takibi: herkese açık Sayfa verisi ---------------- */
+
+export interface PublicPage {
+  id: string;
+  username: string;
+  name: string | null;
+  avatarUrl: string | null;
+  about: string | null;
+  followers: number | null;
+  posts: Array<{ id: string; caption: string; likes: number | null; comments: number | null; shares: number | null; timestamp: string; type: string; permalink: string | null }>;
+}
+
+/**
+ * Başka bir Facebook Sayfasının herkese açık bilgileri ve son gönderileri (bağlı Sayfanın jetonuyla).
+ * Meta "Page Public Metadata Access" (profil) ve "Page Public Content Access" (gönderiler) özelliklerini ister;
+ * gönderiler okunamazsa yalnızca takipçi bilgisi döner.
+ */
+export async function facebookPagePublic(token: string, ref: string): Promise<PublicPage> {
+  const p = await graph<{ id: string; username?: string; name?: string; about?: string; fan_count?: number; followers_count?: number; picture?: { data?: { url?: string } } }>(`/${encodeURIComponent(ref)}`, token, {
+    params: { fields: "id,username,name,about,fan_count,followers_count,picture.type(large)" },
+  });
+  if (!p?.id) throw new ProviderError("Sayfa bulunamadı", 404);
+  let posts: PublicPage["posts"] = [];
+  try {
+    const r = await graph<{
+      data?: Array<{ id: string; message?: string; created_time?: string; permalink_url?: string; status_type?: string; shares?: { count?: number }; reactions?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } } }>;
+    }>(`/${p.id}/posts`, token, {
+      params: { fields: "id,message,created_time,permalink_url,status_type,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)", limit: 25 },
+    });
+    posts = (r.data ?? []).map((x) => ({
+      id: x.id,
+      caption: x.message ?? "",
+      likes: x.reactions?.summary?.total_count ?? null,
+      comments: x.comments?.summary?.total_count ?? null,
+      shares: x.shares?.count ?? 0,
+      timestamp: x.created_time ?? "",
+      type: x.status_type ?? "POST",
+      permalink: x.permalink_url ?? null,
+    }));
+  } catch {
+    /* Page Public Content Access yoksa gönderiler okunamaz */
+  }
+  return { id: p.id, username: (p.username ?? p.id).toLowerCase(), name: p.name ?? null, avatarUrl: p.picture?.data?.url ?? null, about: p.about ?? null, followers: p.followers_count ?? p.fan_count ?? null, posts };
+}

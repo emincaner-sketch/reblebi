@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Plus, Power, RefreshCw, Settings2, Trash2, Users } from "lucide-react";
+import { Check, Copy, ExternalLink, Plus, Power, RefreshCw, Settings2, ShoppingCart, Trash2, Users, Zap } from "lucide-react";
 import { api, errMsg, PROVIDER_NAME, type Channel, type Customer, type OrgInfo, type ProviderInfo } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
@@ -126,6 +126,82 @@ function CustomersModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function ShopifyConnectModal({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  const s = useSession();
+  const toast = useToast();
+  const [copied, setCopied] = useState(false);
+  const webhookUrl = `${window.location.origin.replace(":5500", ":4500")}/api/workflows/webhook/${s.org.id}/shopify.order_created`;
+
+  const copy = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopied(true);
+    toast(t("Shopify Webhook URL'si kopyalandı!"), "ok");
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  return (
+    <Modal title={t("Shopify Mağazasını Bağla")} onClose={onClose} large>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="row" style={{ gap: 14, alignItems: "center", paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
+          <ProviderIcon provider={"shopify" as any} size={42} />
+          <div>
+            <h3 style={{ fontSize: 16 }}>Shopify & Reblebi Entegrasyonu</h3>
+            <p className="muted small">
+              {t("Shopify mağazanızdaki yeni siparişleri, ödemeleri veya terk edilen sepetleri otomatik olarak Slack, Discord, Telegram veya içerik takviminize aktarın.")}
+            </p>
+          </div>
+        </div>
+
+        <div className="card" style={{ background: "var(--bg-3)" }}>
+          <label style={{ fontWeight: 600, fontSize: 13, display: "block", marginBottom: 6 }}>
+            {t("Size Özel Shopify Webhook URL'niz:")}
+          </label>
+          <div className="row" style={{ gap: 8 }}>
+            <input className="input font-mono" value={webhookUrl} readOnly style={{ flex: 1, fontSize: 12.5 }} />
+            <button className="btn btn-primary btn-sm" onClick={copy}>
+              {copied ? <Check style={{ width: 14 }} /> : <Copy style={{ width: 14 }} />}
+              {copied ? t("Kopyalandı") : t("Kopyala")}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <strong style={{ fontSize: 14 }}>{t("Shopify Panelinde Kurulum Adımları (3 Dakika):")}</strong>
+          <ol className="steps" style={{ marginTop: 4, paddingLeft: 20, listStyle: "decimal" }}>
+            <li style={{ display: "list-item", lineHeight: 1.6 }}>
+              <strong>{t("Shopify Admin")}</strong> {t("panelinize girin ve sol alttan")} <strong>{t("Ayarlar (Settings) > Bildirimler (Notifications)")}</strong> {t("bölümüne tıklayın.")}
+            </li>
+            <li style={{ display: "list-item", lineHeight: 1.6 }}>
+              {t("Sayfanın en altındaki")} <strong>{t("Webhook'lar (Webhooks)")}</strong> {t("kısmına inin ve")} <strong>{t("Webhook oluştur (Create webhook)")}</strong> {t("butonuna basın.")}
+            </li>
+            <li style={{ display: "list-item", lineHeight: 1.6 }}>
+              <strong>{t("Olay (Event):")}</strong> <code>{t("Sipariş oluşturuldu (Order creation)")}</code> {t("veya")} <code>{t("Sepet oluşturuldu (Cart creation)")}</code> {t("seçin.")}
+            </li>
+            <li style={{ display: "list-item", lineHeight: 1.6 }}>
+              <strong>{t("Biçim (Format):")}</strong> <code>JSON</code> {t("seçili olsun.")}
+            </li>
+            <li style={{ display: "list-item", lineHeight: 1.6 }}>
+              <strong>{t("URL:")}</strong> {t("Yukarıda kopyaladığınız Reblebi Webhook URL'sini yapıştırın ve")} <strong>{t("Kaydet (Save)")}</strong> {t("butonuna basın.")}
+            </li>
+          </ol>
+        </div>
+
+        <div className="notice notice-ok" style={{ marginTop: 8 }}>
+          <Zap style={{ width: 18 }} />
+          <div style={{ flex: 1 }}>
+            <strong>{t("Hazır Otomasyon Şablonunu Başlatın:")}</strong>{" "}
+            {t("Shopify'dan sipariş geldiğinde paneline canlı bildirim düşürmek, takvime kargo görevi eklemek ve sosyal medyada paylaşmak için hazır şablonu kullanabilirsiniz.")}
+          </div>
+          <Link to="/app/automation" className="btn btn-sm btn-primary" onClick={onClose} style={{ marginLeft: "auto", textDecoration: "none" }}>
+            {t("Otomasyonu Aç")}
+          </Link>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function ChannelsPage() {
   const { t } = useI18n();
   const f = useFmt();
@@ -134,6 +210,7 @@ export default function ChannelsPage() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [open, setOpen] = useState(false);
+  const [shopifyOpen, setShopifyOpen] = useState(false);
   const [formProvider, setFormProvider] = useState<ProviderInfo | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Channel | null>(null);
@@ -365,6 +442,21 @@ export default function ChannelsPage() {
                 {t("OAuth ile bağlananlar seni platformun kendi giriş ekranına yönlendirir; Telegram ve WhatsApp token ile bağlanır.")}
               </p>
               <div className="connect-grid">
+                <button
+                  className="connect-tile"
+                  style={{ border: "1px solid var(--border)" }}
+                  onClick={() => {
+                    setOpen(false);
+                    setShopifyOpen(true);
+                  }}
+                >
+                  <ProviderIcon provider={"shopify" as any} size={34} />
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Shopify</div>
+                    <div className="muted small">E-Ticaret · Webhook</div>
+                  </div>
+                  <ExternalLink style={{ marginLeft: "auto", width: 14, opacity: 0.5 }} />
+                </button>
                 {tiles.map((p) => (
                   <button
                     key={p.id}
@@ -423,6 +515,8 @@ export default function ChannelsPage() {
           )}
         </Modal>
       )}
+
+      {shopifyOpen && <ShopifyConnectModal onClose={() => setShopifyOpen(false)} />}
     </>
   );
 }

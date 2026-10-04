@@ -37,7 +37,7 @@ function htmlFromText(text: string): string {
 }
 
 /** E-posta gönderimi asla ana akışı bozmamalı: hata loglanır, false döner */
-export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+export async function sendMail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
   const t = getTransporter();
   if (!t) {
     outbox.unshift({ to, subject, text, at: new Date().toISOString() });
@@ -47,7 +47,7 @@ export async function sendMail(to: string, subject: string, text: string): Promi
     return false;
   }
   try {
-    await t.sendMail({ from: config.mail.from, to, subject, text, html: htmlFromText(text) });
+    await t.sendMail({ from: config.mail.from, to, subject, text, html: html ?? htmlFromText(text) });
     return true;
   } catch (e) {
     log.error("e-posta gönderilemedi", { to, subject, e: e instanceof Error ? e.message : e });

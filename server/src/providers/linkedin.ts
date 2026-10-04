@@ -5,7 +5,8 @@ import { expiresIn, http } from "./http.js";
 import { ProviderError, type ConnectedAccount, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "./types.js";
 
 const REST = "https://api.linkedin.com/rest";
-const VERSION = process.env.LINKEDIN_VERSION || "202506";
+// LinkedIn sürümleri yaklaşık bir yıl desteklenir (202609: Eylül 2027 tarihine kadar); LINKEDIN_VERSION ile değiştirilebilir
+const VERSION = process.env.LINKEDIN_VERSION || "202609";
 const DEFAULT_SCOPES = "openid profile w_member_social";
 const scopes = () => process.env.LINKEDIN_SCOPES || DEFAULT_SCOPES;
 
@@ -208,6 +209,46 @@ export const linkedinProvider: Provider = {
     let followers = 0;
     for (const e of r.elements ?? []) for (const f of e.followerCountsByAssociationType ?? []) followers += f.followerCounts.organicFollowerCount + f.followerCounts.paidFollowerCount;
     return { followers };
+  },
+
+  /**
+   * Şirket sayfası günlük insights (Community Management API): gösterim, tekil erişim, sayfa ziyareti, yeni takipçi.
+   * Kişisel profillerde LinkedIn bu verileri vermez; boş döner.
+   */
+  async fetchDailyInsights(channel: Channel, range: { since: number; until: number }) {
+    if (channel.metadata.type !== "organization") return {};
+    const urn = encodeURIComponent(channel.externalId);
+    // Rest.li 2.0: yapısal parantezler kodlanmaz, URN değeri kodlanır
+    const interval = `(timeRange:(start:${range.since * 1000},end:${range.until * 1000}),timeGranularityType:DAY)`;
+    const out: Record<string, number> = {};
+    const put = (k: string, v: unknown) => {
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = (out[k] ?? 0) + v;
+    };
+    const get = async <T>(path: string) => {
+      try {
+        return await http<{ elements?: T[] }>(`${REST}/${path}&timeIntervals=${interval}`, { headers: headers(channel.accessToken), retries: 1 });
+      } catch {
+        return { elements: [] as T[] };
+      }
+    };
+    const share = await get<{ totalShareStatistics?: { impressionCount?: number; uniqueImpressionsCount?: number; clickCount?: number } }>(
+      `organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${urn}`,
+    );
+    for (const e of share.elements ?? []) {
+      put("views", e.totalShareStatistics?.impressionCount);
+      put("reach", e.totalShareStatistics?.uniqueImpressionsCount);
+      put("clicks", e.totalShareStatistics?.clickCount);
+    }
+    const followers = await get<{ followerGains?: { organicFollowerGain?: number; paidFollowerGain?: number } }>(
+      `organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity=${urn}`,
+    );
+    for (const e of followers.elements ?? []) {
+      put("follows", e.followerGains?.organicFollowerGain);
+      put("follows", e.followerGains?.paidFollowerGain);
+    }
+    const page = await get<{ totalPageStatistics?: { views?: { allPageViews?: { pageViews?: number } } } }>(`organizationPageStatistics?q=organization&organization=${urn}`);
+    for (const e of page.elements ?? []) put("profileViews", e.totalPageStatistics?.views?.allPageViews?.pageViews);
+    return out;
   },
 
   async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {

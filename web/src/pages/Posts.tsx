@@ -8,6 +8,13 @@ import { useFmt, useSession } from "../lib/session";
 import { addDays, dayKey, keyOf, todayIn, wallClock, weekdayOf, zonedToUtc } from "../lib/tz";
 import { Can, Empty, PageHead, ProviderIcon, StatusBadge, useLocalState, useToast } from "../components/ui";
 
+interface BestTimes {
+  range: { from: string; to: string; tz: string };
+  cells: Array<{ weekday: number; hour: number; posts: number; withMetrics: number; avgInteractions: number | null }>;
+  maxAvg: number;
+  top: Array<{ weekday: number; hour: number }>;
+}
+
 const DAYS = { tr: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"], en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] };
 
 function usePostActions() {
@@ -30,7 +37,7 @@ function usePostActions() {
       onError,
     }),
     cancel: useMutation({ mutationFn: (id: string) => api.post(`/api/posts/${id}/cancel`), onSuccess: () => (toast(t("Plan iptal edildi, taslağa döndü"), "ok"), invalidate()), onError }),
-    remove: useMutation({ mutationFn: (id: string) => api.del(`/api/posts/${id}`), onSuccess: invalidate, onError }),
+    remove: useMutation({ mutationFn: (id: string) => api.del(`/api/posts/${id}`), onSuccess: () => (toast(t("Gönderi silindi; 30 gün içinde Silinenler bölümünden geri alabilirsin."), "ok"), invalidate(), qc.invalidateQueries({ queryKey: ["posts-trash"] })), onError }),
     duplicate: useMutation({ mutationFn: (id: string) => api.post<Post>(`/api/posts/${id}/duplicate`), onSuccess: (p) => nav(`/app/posts/${p.id}`), onError }),
     approve: useMutation({ mutationFn: (id: string) => api.post<Post>(`/api/posts/${id}/approve`), onSuccess: () => (toast(t("Onaylandı"), "ok"), invalidate()), onError }),
     reject: useMutation({
@@ -75,6 +82,17 @@ export default function PostsPage() {
   const a = usePostActions();
   const effView = status ? "list" : view;
   const isCal = effView !== "list";
+  // Takvim katmanı: son 90 günün gün × saat ortalama etkileşimi (yalnızca hafta görünümünde ve açıkken çekilir)
+  const [bestOn, setBestOn] = useLocalState<boolean>("sp_best_times", true);
+  const best = useQuery({
+    queryKey: ["best-times", channelId],
+    queryFn: () => api.get<BestTimes>(`/api/analytics/best-times?days=90${channelId ? `&channelId=${channelId}` : ""}`),
+    enabled: effView === "week" && bestOn,
+    staleTime: 10 * 60_000,
+  });
+  const bestMap = useMemo(() => new Map((best.data?.cells ?? []).map((c) => [`${c.weekday}-${c.hour}`, c])), [best.data]);
+  const bestTop = useMemo(() => new Set((best.data?.top ?? []).map((c) => `${c.weekday}-${c.hour}`)), [best.data]);
+  const heatStep = (v: number | null) => (v === null || !best.data?.maxAvg ? 0 : Math.max(1, Math.min(6, Math.ceil((v / best.data.maxAvg) * 6))));
 
   const grid = useMemo(() => {
     if (effView === "week") {
@@ -308,6 +326,30 @@ export default function PostsPage() {
           </div>
           {filters}
           {s.can("editor") && <p className="muted small" style={{ margin: "0 0 10px" }}>{t("İpucu: gönderileri sürükleyip başka bir güne ya da saate bırakarak yeniden zamanlayabilirsin.")}</p>}
+          {effView === "week" && (
+            <div className="best-bar">
+              <label className="row small" style={{ gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={bestOn} onChange={(e) => setBestOn(e.target.checked)} />
+                <strong>{t("En iyi saatleri göster")}</strong>
+              </label>
+              {bestOn && (
+                <span className="muted small">
+                  {best.data && best.data.cells.length > 0
+                    ? t("Son 90 günde yayınladığın gönderilerin ortalama etkileşimi; koyu hücre daha iyi, noktalı hücreler en iyi 5 saat.")
+                    : best.isFetching
+                      ? t("Yükleniyor…")
+                      : t("Henüz yeterli gönderi metriği yok.")}
+                </span>
+              )}
+              {bestOn && best.data && best.data.cells.length > 0 && (
+                <span className="best-scale" aria-hidden="true">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <i key={i} style={{ background: `var(--heat-${i})` }} />
+                  ))}
+                </span>
+              )}
+            </div>
+          )}
           {effView === "week" ? (
             <div className="cal-scroll">
               <div className="week-head">
@@ -325,17 +367,23 @@ export default function PostsPage() {
                 {Array.from({ length: 24 }, (_, h) => (
                   <div className="week-row" key={h}>
                     <div className="week-hour">{pad2(h)}:00</div>
-                    {grid.cells.map((d) => {
+                    {grid.cells.map((d, wi) => {
                       const dk = keyOf(d.year, d.month, d.day);
                       const key = `${dk}|${h}`;
                       const items = byHour.get(key) ?? [];
+                      const bc = bestOn ? bestMap.get(`${wi}-${h}`) : undefined;
+                      const step = bc ? heatStep(bc.avgInteractions) : 0;
+                      const isTop = bestOn && bestTop.has(`${wi}-${h}`);
                       return (
                         <div
                           key={key}
-                          className={`week-cell ${over === key ? "drop-over" : ""} ${dk === todayKey ? "today" : ""}`}
+                          className={`week-cell ${over === key ? "drop-over" : ""} ${dk === todayKey ? "today" : ""}${step ? " best" : ""}`}
+                          style={step ? { ["--best" as string]: `var(--heat-${step})` } : undefined}
+                          title={bc && bc.avgInteractions !== null ? t("En iyi saatler: ort. {v} etkileşim · {n} gönderi", { v: f.num(Math.round(bc.avgInteractions)), n: bc.posts }) : undefined}
                           onDoubleClick={() => s.can("editor") && nav(`/app/posts/new?date=${dk}&time=${pad2(h)}:00`)}
                           {...dropProps(key, { ...d, hour: h })}
                         >
+                          {isTop && <span className="best-dot" aria-hidden="true" />}
                           {items.map((p) => (
                             <div
                               key={p.id}

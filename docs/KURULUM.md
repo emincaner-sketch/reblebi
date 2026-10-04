@@ -247,7 +247,7 @@ Anahtar yoksa panel çalışır, sadece AI düğmeleri kapalıdır. Pro ve üst�
 
 ## 9. MCP: Claude, ChatGPT, Gemini, Grok ile bağlanma
 
-SosyalPilot uzak bir MCP sunucusudur: adres `https://<PUBLIC_URL>/mcp`. AI uygulamasına bu adresi eklemek yeterli; bağlanırken SosyalPilot giriş ve onay ekranı açılır (OAuth 2.1). Ayrıntılı, istemci başına rehber panelde **Ayarlar > API / MCP** ve herkese açık `/docs/mcp` sayfasında.
+Reblebi uzak bir MCP sunucusudur: adres `https://<PUBLIC_URL>/mcp`. AI uygulamasına bu adresi eklemek yeterli; bağlanırken Reblebi giriş ve onay ekranı açılır (OAuth 2.1). Ayrıntılı, istemci başına rehber panelde **Ayarlar > API / MCP** ve herkese açık `/docs/mcp` sayfasında.
 
 Claude Code (terminal):
 

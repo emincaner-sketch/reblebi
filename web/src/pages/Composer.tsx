@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Check, Clock, ExternalLink, ImagePlus, Link2, Play, Plus, Save, Send, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookMarked, Check, Clock, ExternalLink, Heart, ImagePlus, Link2, MessageCircle, Monitor, Play, Plus, Save, Send, Smartphone, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import type { LibraryItem } from "./Library";
 import {
   api,
   errMsg,
@@ -25,7 +26,7 @@ import {
 } from "../lib/api";
 import { useI18n, useLabels } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
-import { Modal, ProviderIcon, StatusBadge, useToast } from "../components/ui";
+import { Modal, ProviderIcon, StatusBadge, useLocalState, useToast } from "../components/ui";
 
 interface TargetState {
   channelId: string;
@@ -58,6 +59,7 @@ export default function ComposerPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const { t } = useI18n();
+  const [device, setDevice] = useLocalState<"mobile" | "desktop">("sp_preview_device", "mobile");
   const L = useLabels();
   const f = useFmt();
   const s = useSession();
@@ -68,6 +70,7 @@ export default function ComposerPage() {
   const campaigns = useQuery({ queryKey: ["campaigns"], queryFn: () => api.get<Campaign[]>("/api/campaigns") });
   const signatures = useQuery({ queryKey: ["signatures"], queryFn: () => api.get<Signature[]>("/api/signatures") });
   const presets = useQuery({ queryKey: ["presets"], queryFn: () => api.get<Preset[]>("/api/presets") });
+  const library = useQuery({ queryKey: ["library"], queryFn: () => api.get<LibraryItem[]>("/api/library") });
   const org = useQuery({ queryKey: ["org"], queryFn: () => api.get<OrgInfo>("/api/org") });
   const existing = useQuery({
     queryKey: ["post", id],
@@ -123,6 +126,44 @@ export default function ComposerPage() {
       setLoaded(true);
     }
   }, [existing.data, loaded, f]);
+
+  // Kütüphaneden şablonla başla: /app/posts/new?template=…
+  const templateId = !id ? search.get("template") : null;
+  useEffect(() => {
+    if (!templateId || loaded) return;
+    api
+      .post<LibraryItem>(`/api/library/${templateId}/use`)
+      .then((tpl) => {
+        setKind(tpl.kind);
+        setTitle(tpl.name);
+        setContent(tpl.content);
+        setMediaIds(tpl.mediaIds);
+      })
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  }, [templateId, loaded]);
+
+  /** Hashtag grubu metnin sonuna eklenir; gönderi şablonu metni, medyayı ve türü getirir */
+  const applyLibrary = (itemId: string) => {
+    const it = library.data?.find((x) => x.id === itemId);
+    if (!it) return;
+    if (it.type === "hashtags") setContent((c) => `${c.trimEnd()}${c.trim() ? "\n\n" : ""}${it.content}`);
+    else {
+      if (content.trim() && !confirm(t("Mevcut metnin yerine şablon gelsin mi?"))) return;
+      setKind(it.kind);
+      setContent(it.content);
+      if (it.mediaIds.length) setMediaIds(it.mediaIds);
+    }
+    void api.post(`/api/library/${it.id}/use`).catch(() => undefined);
+  };
+  const saveToLibrary = useMutation({
+    mutationFn: (name: string) => api.post<LibraryItem>("/api/library", { type: "post", name, kind, content, mediaIds }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library"] });
+      toast(t("Kütüphaneye kaydedildi"), "ok");
+    },
+    onError: (e) => toast(errMsg(e), "err"),
+  });
 
   const chMap = useMemo(() => new Map((channels.data ?? []).map((c) => [c.id, c])), [channels.data]);
   const supports = (c: Channel) => c.capabilities[kind] ?? false;
@@ -213,6 +254,7 @@ export default function ComposerPage() {
   const remove = useMutation({
     mutationFn: () => api.del(`/api/posts/${id}`),
     onSuccess: () => {
+      toast(t("Gönderi silindi; 30 gün içinde Silinenler bölümünden geri alabilirsin."), "ok");
       invalidate();
       nav("/app/posts");
     },
@@ -515,6 +557,43 @@ export default function ComposerPage() {
                 <label>{t("Metin")}</label>
                 {!readOnly && (
                   <div className="row" style={{ gap: 6 }}>
+                    {(library.data?.length ?? 0) > 0 && (
+                      <select className="select select-sm" value="" aria-label={t("Kütüphaneden ekle")} onChange={(e) => e.target.value && applyLibrary(e.target.value)}>
+                        <option value="">{t("Şablon / hashtag…")}</option>
+                        {library.data!.some((x) => x.type === "hashtags") && (
+                          <optgroup label={t("Hashtag grupları")}>
+                            {library.data!.filter((x) => x.type === "hashtags").map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {library.data!.some((x) => x.type === "post") && (
+                          <optgroup label={t("Gönderi şablonları")}>
+                            {library.data!.filter((x) => x.type === "post").map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    )}
+                    {(content.trim() || mediaIds.length > 0) && (
+                      <button
+                        className="btn btn-sm"
+                        title={t("Kütüphaneye kaydet")}
+                        aria-label={t("Kütüphaneye kaydet")}
+                        disabled={saveToLibrary.isPending}
+                        onClick={() => {
+                          const n = prompt(t("Şablon adı"), title || content.slice(0, 40));
+                          if (n?.trim()) saveToLibrary.mutate(n.trim());
+                        }}
+                      >
+                        <BookMarked />
+                      </button>
+                    )}
                     {content.trim() && (
                       <select
                         className="select select-sm"
@@ -911,27 +990,45 @@ export default function ComposerPage() {
           <div className="card">
             <div className="card-title">
               <h2>{t("Önizleme")}</h2>
+              <div className="segmented segmented-sm" role="group" aria-label={t("Önizleme cihazı")}>
+                <button type="button" className={device === "mobile" ? "active" : ""} aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")}>
+                  <Smartphone aria-hidden="true" /> {t("Mobil")}
+                </button>
+                <button type="button" className={device === "desktop" ? "active" : ""} aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")}>
+                  <Monitor aria-hidden="true" /> {t("Masaüstü")}
+                </button>
+              </div>
             </div>
             {targets.length === 0 ? (
               <p className="muted">{t("Kanal seçince her platform için önizleme burada görünür.")}</p>
             ) : (
-              <div className="form">
+              <div className={`pv-device pv-${device}`}>
+                <div className="pv-screen form">
                 {targets.map((x) => {
                   const c = chMap.get(x.channelId);
                   if (!c) return null;
                   const text = x.content ?? content;
                   const parts = kind === "thread" ? text.split(/\n\s*---\s*\n/) : [text];
+                  const max = c.capabilities.maxTextLength ?? 0;
+                  const over = max > 0 && text.length > max;
                   return (
                     <div key={x.channelId} className="preview">
                       <div className="preview-head">
                         <ProviderIcon provider={c.provider} size={22} />
-                        <div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
                           <div className="muted small">
                             {PROVIDER_NAME[c.provider]} · {L.kind(kind)}
                             {x.settings.title ? ` · ${String(x.settings.title)}` : ""}
                           </div>
                         </div>
+                        {max > 0 && (
+                          <span className={`pv-count${over ? " pv-count--over" : ""}`}>
+                            {over && <AlertTriangle aria-hidden="true" />}
+                            {text.length}/{max}
+                            {over && <span className="sr-only"> {t("sınır aşıldı")}</span>}
+                          </span>
+                        )}
                       </div>
                       {selectedMedia.length > 0 && (
                         <div className="media-grid" style={{ marginBottom: 8, gridTemplateColumns: kind === "story" ? "120px" : undefined }}>
@@ -948,11 +1045,18 @@ export default function ComposerPage() {
                         </p>
                       ))}
                       {comments[0]?.text && c.capabilities.comments && <p className="muted small">💬 {comments[0].text}</p>}
+                      <div className="pv-actions" aria-hidden="true">
+                        <Heart />
+                        <MessageCircle />
+                        <Send />
+                      </div>
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
+            <p className="muted small" style={{ marginTop: 10 }}>{t("Önizleme yaklaşıktır; platform yayında küçük farklar gösterebilir.")}</p>
           </div>
 
           {post && s.can("editor") && (

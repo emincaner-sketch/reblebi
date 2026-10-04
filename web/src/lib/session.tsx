@@ -46,9 +46,14 @@ export function SessionProvider({ me, children }: { me: Me; children: ReactNode 
     [qc],
   );
   const logout = useCallback(async () => {
-    await api.post("/api/auth/logout");
-    qc.clear();
-    window.location.href = "/login";
+    try {
+      await api.post("/api/auth/logout");
+    } catch {
+      // Çerez veya ağ hatası olsa bile istemci tarafını sıfırla
+    } finally {
+      qc.clear();
+      window.location.href = "/login";
+    }
   }, [qc]);
 
   const value = useMemo<Session | null>(() => {

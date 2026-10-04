@@ -8,7 +8,7 @@ import { aiJson, aiText, resolveAiConfig, type AiConfig } from "./providers.js";
 
 export { aiAvailable, platformAiAvailable, resolveAiConfig, testAi, DEFAULT_MODELS } from "./providers.js";
 
-const PLATFORM_HINTS: Record<ProviderId, string> = {
+const PLATFORM_HINTS: Partial<Record<ProviderId, string>> = {
   instagram: "Instagram: first line is the hook, max 2200 chars, 5-15 hashtags at the end, moderate emoji, line breaks for readability.",
   facebook: "Facebook Page: conversational, 1-3 short paragraphs, 0-3 hashtags, invite engagement with a question.",
   threads: "Threads: max 500 chars, short and conversational, zero or one hashtag.",

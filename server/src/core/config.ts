@@ -35,7 +35,7 @@ const defaultPublicUrl = env("RAILWAY_PUBLIC_DOMAIN") ? "https://" + env("RAILWA
 export type SignupMode = "open" | "invite" | "closed";
 
 export const config = {
-  appName: env("APP_NAME", "SosyalPilot"),
+  appName: env("APP_NAME", "Reblebi"),
   port,
   publicUrl: env("PUBLIC_URL", defaultPublicUrl).replace(/\/$/, ""),
   /** Geliştirmede panel ayrı porttan (5173) çalışır; e-posta linkleri buraya gider */
@@ -69,7 +69,7 @@ export const config = {
     secure: env("SMTP_SECURE", "false") === "true",
     user: env("SMTP_USER"),
     pass: env("SMTP_PASS"),
-    from: env("MAIL_FROM", "SosyalPilot <no-reply@localhost>"),
+    from: env("MAIL_FROM", "Reblebi <no-reply@localhost>"),
   },
 
   ai: {
@@ -97,6 +97,14 @@ export const config = {
   linkedin: { clientId: env("LINKEDIN_CLIENT_ID"), clientSecret: env("LINKEDIN_CLIENT_SECRET") },
   tiktok: { clientKey: env("TIKTOK_CLIENT_KEY"), clientSecret: env("TIKTOK_CLIENT_SECRET") },
   google: { clientId: env("GOOGLE_CLIENT_ID"), clientSecret: env("GOOGLE_CLIENT_SECRET") },
+  /** Google Ads raporları (isteğe bağlı): geliştirici jetonu + (yönetici hesabıyla çalışılıyorsa) MCC kimliği */
+  googleAds: {
+    developerToken: env("GOOGLE_ADS_DEVELOPER_TOKEN"),
+    loginCustomerId: env("GOOGLE_ADS_LOGIN_CUSTOMER_ID"),
+    apiVersion: env("GOOGLE_ADS_API_VERSION", "v25"),
+  },
+  /** TikTok Ads raporları (isteğe bağlı): TikTok for Business geliştirici uygulaması (gönderi için kullanılan TikTok uygulamasından ayrı) */
+  tiktokAds: { appId: env("TIKTOK_ADS_APP_ID"), secret: env("TIKTOK_ADS_SECRET") },
 
   security: {
     /** Panel dışındaki kökenlerden gelen çerezli istekleri reddet (CSRF) */

@@ -77,9 +77,43 @@ async function assertPublicUrl(raw: string): Promise<URL> {
 }
 
 /** Herkese açık URL'deki görseli/videoyu kütüphaneye al */
+/**
+ * Paylaşım bağlantısını doğrudan indirme adresine çevirir: Google Drive ("herkes bağlantıya sahip" dosya)
+ * ve Dropbox paylaşım linkleri. Diğer adresler değişmeden döner.
+ */
+export function directDownloadUrl(raw: string): string {
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return raw;
+  }
+  const host = u.hostname.toLowerCase();
+  if (host === "drive.google.com" || host === "docs.google.com") {
+    const id = /\/file\/d\/([\w-]{10,})/.exec(u.pathname)?.[1] ?? u.searchParams.get("id");
+    if (id && /^[\w-]{10,}$/.test(id)) return `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
+  }
+  if (host === "www.dropbox.com" || host === "dropbox.com") {
+    u.searchParams.delete("dl");
+    u.searchParams.set("dl", "1");
+    return u.toString();
+  }
+  return raw;
+}
+
+const MIME_BY_EXT: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", mp4: "video/mp4", m4v: "video/x-m4v", mov: "video/quicktime", webm: "video/webm" };
+
+/** Depolama servisleri bazen genel tür (octet-stream) döner: dosya adının uzantısından tür çıkarılır */
+function mimeFromName(res: Response, fallbackPath: string): string | null {
+  const cd = res.headers.get("content-disposition") ?? "";
+  const fname = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1] ?? /filename="?([^";]+)"?/i.exec(cd)?.[1] ?? fallbackPath;
+  const ext = decodeURIComponent(fname).split(".").pop()?.toLowerCase() ?? "";
+  return MIME_BY_EXT[ext] ?? null;
+}
+
 export async function importMediaFromUrl(ctx: Ctx, url: string, name?: string): Promise<MediaFile> {
   requireRole(ctx, "editor");
-  const u = await assertPublicUrl(url);
+  const u = await assertPublicUrl(directDownloadUrl(url));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
   try {
@@ -87,7 +121,8 @@ export async function importMediaFromUrl(ctx: Ctx, url: string, name?: string): 
     if (!res.ok || !res.body) throw new AppError(400, "err.validation", { detail: `download ${res.status}` });
     // Yönlendirme sonrası adres de herkese açık olmalı
     if (res.url && res.url !== u.toString()) await assertPublicUrl(res.url);
-    const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    let mime = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!ALLOWED_MIME.test(mime) && /^(application\/(octet-stream|binary|x-download)|binary\/octet-stream)?$/.test(mime)) mime = mimeFromName(res, u.pathname) ?? mime;
     if (!ALLOWED_MIME.test(mime)) throw new AppError(400, "err.validation", { detail: `unsupported type ${mime || "unknown"}` });
     const declared = Number(res.headers.get("content-length") ?? 0);
     if (declared > MAX_UPLOAD_BYTES) throw new AppError(413, "err.validation", { detail: "file too large" });
@@ -101,7 +136,10 @@ export async function importMediaFromUrl(ctx: Ctx, url: string, name?: string): 
       if (size > MAX_UPLOAD_BYTES) limited.destroy(new Error("file too large"));
     });
     await pipeline(limited, fs.createWriteStream(dest));
-    const originalName = (name ?? decodeURIComponent(path.basename(u.pathname)) ?? filename).slice(0, 200) || filename;
+    // Drive/Dropbox indirme adresinde dosya adı yoldan değil Content-Disposition başlığından gelir
+    const cd = res.headers.get("content-disposition") ?? "";
+    const cdName = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1] ?? /filename="?([^";]+)"?/i.exec(cd)?.[1];
+    const originalName = (name ?? (cdName ? decodeURIComponent(cdName) : null) ?? decodeURIComponent(path.basename(u.pathname)) ?? filename).slice(0, 200) || filename;
     return mediaRepo.create({ id, orgId: ctx.orgId, filename, originalName, mime, size, kind: kindOf(mime) });
   } finally {
     clearTimeout(timer);

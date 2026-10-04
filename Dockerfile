@@ -1,4 +1,4 @@
-# SosyalPilot üretim imajı: panel + API + MCP tek süreçte, tek porttan (4100)
+# Reblebi üretim imajı: panel + API + MCP tek süreçte, tek porttan (4100)
 # Derleme:  docker build -t sosyalpilot .
 # Çalıştırma için docker-compose.yml kullan (Caddy ile otomatik HTTPS).
 

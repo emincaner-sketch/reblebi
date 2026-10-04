@@ -24,6 +24,20 @@ import { orgRoutes } from "./routes/org.js";
 import { postRoutes } from "./routes/posts.js";
 import { publicRoutes } from "./routes/public.js";
 import { settingsRoutes } from "./routes/settings.js";
+import { workflowRoutes } from "./routes/workflows.js";
+import { appConnectionRoutes } from "./routes/app-connections.js";
+import { bioPublicRoutes, bioRoutes } from "./routes/bio.js";
+import { competitorRoutes } from "./routes/competitors.js";
+import { googleAuthRoutes } from "./routes/auth-google.js";
+import { adsRoutes } from "./routes/ads.js";
+import { libraryRoutes } from "./routes/library.js";
+import { dashboardRoutes } from "./routes/dashboards.js";
+import { autolistRoutes } from "./routes/autolists.js";
+import { websitePublicRoutes, websiteRoutes } from "./routes/website.js";
+import { feedRoutes } from "./routes/feed.js";
+import { pushRoutes } from "./routes/push.js";
+import { hashtagRoutes } from "./routes/hashtags.js";
+import { exportRoutes } from "./routes/export.js";
 
 const log = createLogger("http");
 
@@ -33,9 +47,51 @@ declare module "fastify" {
   }
 }
 
-/** Herkese açık CORS gereken yollar (MCP istemcileri, OAuth, önizleme) — çerezsiz */
+/**
+ * İstemci tarafında çizilen (ön-render edilmeyen) panel yolları. web/src/App.tsx'teki özel yollarla aynı tutulmalı.
+ * Bu yollar noindex'li boş kabuğu (app.html) alır; listede olmayan ve ön-render sayfası da olmayan her yol 404'tür.
+ */
+const SPA_PATHS = ["/app", "/login", "/signup", "/forgot", "/reset-password", "/verify", "/invite", "/consent", "/preview", "/kanallar", "/gonderiler", "/gelen-kutusu", "/otomasyon", "/analitik", "/ayarlar"];
+
+function isSpaPath(p: string): boolean {
+  return SPA_PATHS.some((s) => p === s || p.startsWith(s + "/"));
+}
+
+/** Kalıcı yönlendirmeler (eski ya da yinelenen adresler) */
+const LEGACY_REDIRECTS: Record<string, string> = { "/index.html": "/", "/pricing": "/fiyatlar", "/en/fiyatlar": "/en/pricing", "/tr": "/" };
+
+/** web/dist içindeki ön-render sayfaları: "/" -> index.html, "/en/pricing" -> en/pricing/index.html */
+function webPages(root: string): { pages: Map<string, string>; shell: string; notFound: string | null; notFoundEn: string | null } {
+  const pages = new Map<string, string>();
+  const walk = (dir: string) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (ent.isDirectory()) {
+        if (ent.name !== "assets" && ent.name !== "fonts") walk(path.join(dir, ent.name));
+      } else if (ent.name === "index.html") {
+        const rel = path.relative(root, dir).replace(/\\/g, "/");
+        pages.set(rel ? `/${rel}` : "/", rel ? `${rel}/index.html` : "index.html");
+      }
+    }
+  };
+  walk(root);
+  const shell = fs.existsSync(path.join(root, "app.html")) ? "app.html" : "index.html";
+  const notFound = fs.existsSync(path.join(root, "404.html")) ? "404.html" : null;
+  const notFoundEn = fs.existsSync(path.join(root, "404-en.html")) ? "404-en.html" : null;
+  return { pages, shell, notFound, notFoundEn };
+}
+
+/** Herkese açık CORS gereken yollar (MCP istemcileri, OAuth, önizleme, inbound webhooklar) — çerezsiz */
 function isPublicCorsPath(url: string): boolean {
-  return url.startsWith("/mcp") || url.startsWith("/.well-known/") || url.startsWith("/oauth/token") || url.startsWith("/oauth/register") || url.startsWith("/oauth/revoke") || url.startsWith("/api/public/");
+  return (
+    url.startsWith("/mcp") ||
+    url.startsWith("/.well-known/") ||
+    url.startsWith("/oauth/token") ||
+    url.startsWith("/oauth/register") ||
+    url.startsWith("/oauth/revoke") ||
+    url.startsWith("/api/public/") ||
+    url.startsWith("/api/webhooks/catch/") ||
+    url.startsWith("/webhooks/catch/")
+  );
 }
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -111,7 +167,7 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   app.addHook("onRequest", resolveRequest);
   app.addHook("preHandler", async (req) => {
-    if (req.url.startsWith("/api/")) await csrfGuard(req);
+    if (req.url.startsWith("/api/") && !req.url.startsWith("/api/public/collect")) await csrfGuard(req);
   });
 
   app.setErrorHandler((error, req, reply) => {
@@ -136,30 +192,97 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(mcpRoutes);
   await app.register(oauthCallbackRoutes);
   await app.register(authRoutes);
+  await app.register(googleAuthRoutes);
   await app.register(orgRoutes);
   await app.register(channelRoutes);
   await app.register(postRoutes);
   await app.register(campaignRoutes);
   await app.register(inboxRoutes);
   await app.register(settingsRoutes);
+  await app.register(workflowRoutes);
+  await app.register(appConnectionRoutes);
+  await app.register(bioRoutes);
+  await app.register(bioPublicRoutes);
+  await app.register(websitePublicRoutes);
+  await app.register(competitorRoutes);
+  await app.register(adsRoutes);
+  await app.register(libraryRoutes);
+  await app.register(dashboardRoutes);
+  await app.register(autolistRoutes);
+  await app.register(websiteRoutes);
+  await app.register(feedRoutes);
+  await app.register(pushRoutes);
+  await app.register(hashtagRoutes);
+  await app.register(exportRoutes);
   await app.register(adminRoutes);
 
   // Yüklenen medya (platformlar bu herkese açık URL'den çeker)
   await app.register(fastifyStatic, { root: config.mediaDir, prefix: "/media/", decorateReply: false, cacheControl: true, maxAge: "7d", immutable: true });
 
-  // Derlenmiş panel (web/dist) varsa aynı porttan sun; SPA fallback
+  // Derlenmiş panel (web/dist) varsa aynı porttan sun.
+  // Herkese açık sayfalar derlemede HTML'e çevrilir (web/scripts/prerender.ts): her yolun kendi index.html'i var.
   const webDist = path.join(PROJECT_ROOT, "web", "dist");
   const hasWeb = fs.existsSync(path.join(webDist, "index.html"));
+  const site = hasWeb ? webPages(webDist) : null;
+  // Sayfa HTML'ini yalnızca aşağıdaki yol eşleştirmesi verir; /index.html gibi doğrudan istekler 404 olur
+  const pageRequests = new WeakSet<FastifyRequest>();
   if (hasWeb) {
-    await app.register(fastifyStatic, { root: webDist, prefix: "/", decorateReply: true, wildcard: false, index: false });
+    await app.register(fastifyStatic, {
+      root: webDist,
+      prefix: "/",
+      decorateReply: true,
+      wildcard: false,
+      index: false,
+      // Önbellek başlığı setHeaders'ta dosya türüne göre yazılır (eklentinin varsayılanı max-age=0)
+      cacheControl: false,
+      // Derlemede üretilen .br/.gz kopyalar (web/scripts/prerender.ts) varsa onlar verilir
+      preCompressed: true,
+      // offline.html: servis çalışanının çevrimdışı sayfası (web/public/sw.js önbelleğe alır; noindex)
+      allowedPath: (p, _root, req) => !p.endsWith(".html") || p === "/offline.html" || pageRequests.has(req),
+      setHeaders: (res, filePath) => {
+        const rel = filePath.replace(/\\/g, "/").replace(/\.(br|gz)$/, "");
+        if (rel.endsWith(".html")) res.setHeader("Cache-Control", "no-cache");
+        // assets: adında içerik özeti var; fonts: sabit ad, içerik değişirse adı da değişir (web/src/fonts.css)
+        else if (rel.includes("/assets/") || rel.includes("/fonts/")) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        else res.setHeader("Cache-Control", "public, max-age=3600");
+      },
+    });
   }
+  // Sayfa ve dosyalar sıkıştırılmış/sıkıştırılmamış iki sürümle verilebilir: aradaki önbellekler (CDN) karıştırmasın
+  app.addHook("onSend", async (req, reply) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return;
+    if (["/api/", "/mcp", "/oauth/", "/webhooks/", "/.well-known/", "/media/"].some((p) => req.url.startsWith(p))) return;
+    const v = reply.getHeader("vary");
+    const cur = Array.isArray(v) ? v.join(", ") : v ? String(v) : "";
+    if (!/accept-encoding/i.test(cur)) reply.header("vary", cur ? `${cur}, Accept-Encoding` : "Accept-Encoding");
+  });
   app.setNotFoundHandler((req, reply) => {
     const apiLike = ["/api/", "/webhooks/", "/media/", "/oauth/", "/.well-known/", "/mcp"].some((p) => req.url.startsWith(p));
-    if (req.method === "GET" && !apiLike) {
-      if (hasWeb) return reply.header("Cache-Control", "no-cache").sendFile("index.html");
-      return reply
-        .type("text/html")
-        .send(`<html><body style="font-family:sans-serif;padding:40px"><h2>${config.appName} API</h2><p>Panel is not built. Dev: <code>npm run dev</code> (panel http://localhost:5173) · Prod: <code>npm run build</code></p></body></html>`);
+    if ((req.method === "GET" || req.method === "HEAD") && !apiLike) {
+      if (!site) {
+        return reply
+          .type("text/html")
+          .send(`<html><body style="font-family:sans-serif;padding:40px"><h2>${config.appName} API</h2><p>Panel is not built. Dev: <code>npm run dev</code> (panel http://localhost:5173) · Prod: <code>npm run build</code></p></body></html>`);
+      }
+      const q = req.url.indexOf("?");
+      const pathname = decodeURIComponent(q === -1 ? req.url : req.url.slice(0, q));
+      const search = q === -1 ? "" : req.url.slice(q);
+      const html = (file: string, code = 200) => {
+        pageRequests.add(req);
+        return reply.code(code).header("Cache-Control", "no-cache").type("text/html; charset=utf-8").sendFile(file);
+      };
+
+      if (pathname.length > 1 && pathname.endsWith("/")) {
+        const bare = pathname.replace(/\/+$/, "") || "/";
+        if (site.pages.has(bare) || isSpaPath(bare)) return reply.redirect(bare + search, 301);
+      }
+      const moved = LEGACY_REDIRECTS[pathname];
+      if (moved) return reply.redirect(moved + search, 301);
+      const page = site.pages.get(pathname);
+      if (page) return html(page);
+      if (isSpaPath(pathname)) return html(site.shell);
+      const notFound = pathname === "/en" || pathname.startsWith("/en/") ? (site.notFoundEn ?? site.notFound) : site.notFound;
+      return notFound ? html(notFound, 404) : html(site.shell, 404);
     }
     return reply.code(404).send({ error: t(req.locale ?? "tr", "err.not_found", { what: req.url }), code: "err.not_found" });
   });

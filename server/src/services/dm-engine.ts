@@ -74,6 +74,8 @@ function containsHandoffKeyword(text: string, s: OrgSettings): boolean {
 
 export async function sendReply(channel: Channel, conversation: Conversation, text: string, sentBy: Message["sentBy"], ruleId: string | null = null): Promise<Message> {
   const provider = getProvider(channel.provider);
+  if (conversation.metadata.kind === "comment") return sendCommentReply(channel, conversation, text, sentBy);
+  if (conversation.metadata.kind === "review") return sendReviewReply(channel, conversation, text, sentBy);
   if (!provider.sendMessage) throw new AppError(400, "channel.no_dm", { provider: provider.label });
   try {
     const fresh = await ensureFreshToken(channel);
@@ -83,6 +85,40 @@ export async function sendReply(channel: Channel, conversation: Conversation, te
     const msg = e instanceof Error ? e.message : String(e);
     activityRepo.add(channel.orgId, "error", "dm", `${channel.name}: ${msg}`, { conversationId: conversation.id });
     return inboxRepo.recordOutbound(conversation.id, text, sentBy, { ruleId, status: "failed", error: msg.slice(0, 500) });
+  }
+}
+
+/** Yorum konusuna yanıt: gönderinin altında, son yorumun üst seviye yorumuna herkese açık yanıt */
+async function sendCommentReply(channel: Channel, conversation: Conversation, text: string, sentBy: Message["sentBy"]): Promise<Message> {
+  const provider = getProvider(channel.provider);
+  if (!provider.publishComment) throw new AppError(400, "channel.no_dm", { provider: provider.label });
+  const m = conversation.metadata as { mediaId?: string; commentId?: string; parentId?: string | null };
+  const target = m.parentId || m.commentId;
+  try {
+    if (!m.mediaId || !target) throw new Error("yorum kimliği yok");
+    const fresh = await ensureFreshToken(channel);
+    const r = await provider.publishComment(fresh, m.mediaId, text, target);
+    return inboxRepo.recordOutbound(conversation.id, text, sentBy, { externalId: r.externalId ?? null, status: "sent" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    activityRepo.add(channel.orgId, "error", "dm", `${channel.name}: ${msg}`, { conversationId: conversation.id });
+    return inboxRepo.recordOutbound(conversation.id, text, sentBy, { status: "failed", error: msg.slice(0, 500) });
+  }
+}
+
+/** İşletme değerlendirmesine herkese açık yanıt (Google Business Profile); yeni yanıt öncekinin yerine geçer */
+async function sendReviewReply(channel: Channel, conversation: Conversation, text: string, sentBy: Message["sentBy"]): Promise<Message> {
+  const provider = getProvider(channel.provider);
+  const reviewName = conversation.metadata.reviewName as string | undefined;
+  try {
+    if (!provider.replyReview || !reviewName) throw new Error("değerlendirme kimliği yok");
+    const fresh = await ensureFreshToken(channel);
+    const r = await provider.replyReview(fresh, reviewName, text);
+    return inboxRepo.recordOutbound(conversation.id, text, sentBy, { externalId: r.externalId ?? null, status: "sent" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    activityRepo.add(channel.orgId, "error", "dm", `${channel.name}: ${msg}`, { conversationId: conversation.id });
+    return inboxRepo.recordOutbound(conversation.id, text, sentBy, { status: "failed", error: msg.slice(0, 500) });
   }
 }
 
@@ -126,7 +162,7 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
   let name = ev.participantName ?? null;
   let avatar = ev.participantAvatar ?? null;
   const existing = inboxRepo.findConversation(channel.id, ev.conversationExternalId);
-  if (!existing && !name && (provider === "instagram" || provider === "facebook")) {
+  if (!existing && !name && !ev.kind && (provider === "instagram" || provider === "facebook")) {
     const info = await lookupParticipant(provider, ev.participantId, channel.accessToken);
     name = info.name;
     avatar = info.avatar;
@@ -142,9 +178,18 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
     text: ev.text,
     attachments: ev.attachments ?? [],
     receivedAt: ev.receivedAt,
+    metadata: ev.metadata,
   });
   if (!rec) return; // tekrar eden webhook
   const { conversation, message } = rec;
+  // Yorum / değerlendirme konusu: yanıt en son yoruma (üst seviye) ya da değerlendirmeye gider; otomatik yanıt verilmez, ekip görür
+  if (ev.kind === "comment" || ev.kind === "review") {
+    if (!rec.created && ev.metadata)
+      inboxRepo.mergeMetadata(conversation.id, ev.kind === "review" ? { rating: ev.metadata.rating ?? null } : { commentId: ev.metadata.commentId, parentId: ev.metadata.parentId ?? null });
+    inboxRepo.flagAttention(conversation.id, true);
+    emitWebhook(channel.orgId, "message.received", { conversationId: conversation.id, channelId: channel.id, provider, kind: ev.kind, from: conversation.participantName ?? conversation.participantId, text: message.text });
+    return;
+  }
   emitWebhook(channel.orgId, "message.received", {
     conversationId: conversation.id,
     channelId: channel.id,

@@ -4,8 +4,71 @@
     {
       "name": "sosyalpilot",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "web"
+      ],
+      "port": 5500
+    },
+    {
+      "name": "site-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec",
+        "-w",
+        "web",
+        "--",
+        "vite",
+        "--port",
+        "5510",
+        "--strictPort"
+      ],
+      "port": 5510
+    },
+    {
+      "name": "site-dist",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec",
+        "-w",
+        "web",
+        "--",
+        "vite",
+        "preview",
+        "--port",
+        "5520",
+        "--strictPort"
+      ],
+      "port": 5520
+    },
+    {
+      "name": "demo-api",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "server/scripts/demo-api.ts"
+      ],
+      "port": 4510
+    },
+    {
+      "name": "demo-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set VITE_API_URL=http://localhost:4510&& npm exec -w web -- vite --port 5530 --strictPort"
+      ],
+      "port": 5530
     }
   ]
 }

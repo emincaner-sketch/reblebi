@@ -5,6 +5,7 @@ import { campaignsRepo, postNotesRepo, previewLinksRepo, signaturesRepo, tagsRep
 import { commentJobsRepo, postsRepo, type ListPostsOptions, type TargetInput } from "../core/repos/posts.js";
 import { activityRepo, mediaRepo, postMetricsRepo } from "../core/repos/misc.js";
 import { orgSettingsRepo, orgsRepo } from "../core/repos/orgs.js";
+import { trashRepo, type DeletedPost } from "../core/repos/trash.js";
 import type { Ctx, Post, PostComment, PostKind, PostStatus, Recurrence } from "../core/types.js";
 import { getProvider } from "../providers/index.js";
 import { splitThread } from "../providers/meta/threads.js";
@@ -502,8 +503,38 @@ export function deletePost(ctx: Ctx, id: string): void {
   const post = postsRepo.get(ctx.orgId, id);
   if (!post) return;
   if (post.status === "publishing") throw new AppError(409, "post.publishing_locked");
+  // Önce çöp kutusuna anlık görüntü: 30 gün içinde geri alınabilir
+  trashRepo.capture(ctx.orgId, id, ctx.userId);
   postsRepo.remove(ctx.orgId, id);
   if (post.campaignId) campaignsRepo.refreshRange(ctx.orgId, post.campaignId);
+  activityRepo.add(ctx.orgId, "info", "post", "deleted", { postId: id, by: ctx.userId });
+}
+
+/* ---------------- Çöp kutusu ---------------- */
+
+export function listTrash(ctx: Ctx): DeletedPost[] {
+  return trashRepo.list(ctx.orgId);
+}
+
+export function restorePost(ctx: Ctx, id: string): Post & { droppedTargets: number; toDraft: boolean } {
+  requireRole(ctx, "editor");
+  if (!trashRepo.get(ctx.orgId, id)) throw notFound("post");
+  const r = trashRepo.restore(ctx.orgId, id);
+  if (!r) throw new AppError(409, "post.restore_conflict");
+  if (r.campaignId) campaignsRepo.refreshRange(ctx.orgId, r.campaignId);
+  activityRepo.add(ctx.orgId, "info", "post", "restored", { postId: id, by: ctx.userId });
+  return { ...postsRepo.get(ctx.orgId, id)!, droppedTargets: r.droppedTargets, toDraft: r.toDraft };
+}
+
+export function purgeTrash(ctx: Ctx, id: string | null): { removed: number } {
+  if (id) {
+    requireRole(ctx, "editor");
+    const had = !!trashRepo.get(ctx.orgId, id);
+    trashRepo.remove(ctx.orgId, id);
+    return { removed: had ? 1 : 0 };
+  }
+  requireRole(ctx, "admin");
+  return { removed: trashRepo.empty(ctx.orgId) };
 }
 
 export function duplicatePost(ctx: Ctx, id: string): Post {

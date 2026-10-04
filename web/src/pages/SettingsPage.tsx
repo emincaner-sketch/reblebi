@@ -622,7 +622,7 @@ function WebhooksTab() {
           </button>
         }
       >
-        <p className="muted small">{t("Olaylar JSON olarak POST edilir. İmza: X-SosyalPilot-Signature başlığında gizli anahtarla HMAC-SHA256. Zapier, Make, n8n ya da kendi sunucunla kullan.")}</p>
+        <p className="muted small">{t("Olaylar JSON olarak POST edilir. İmza: X-Reblebi-Signature başlığında gizli anahtarla HMAC-SHA256 (eski entegrasyonlar için X-SosyalPilot-Signature da gönderilir). Webhook entegrasyonları, n8n, Make ya da kendi sunucunla kullan.")}</p>
         <table className="table">
           <tbody>
             {q.data?.items.map((w) => (
@@ -690,7 +690,7 @@ function WebhooksTab() {
             </div>
             <div className="field">
               <label>URL</label>
-              <input className="input" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://hooks.zapier.com/…" />
+              <input className="input" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://api.domain.com/webhook/…" />
             </div>
             <div className="field">
               <label>{t("Olaylar")}</label>
@@ -734,13 +734,13 @@ function ApiTab() {
     <>
       {sys.data && !sys.data.mcp.enabled && <div className="notice notice-warn" style={{ marginBottom: 16 }}>{t("MCP erişimi mevcut planında yok.")}</div>}
       <Section title={t("Claude, ChatGPT, Gemini ve Grok'u bağla")}>
-        <McpGuide mcpUrl={mcpUrl} appName={sys.data?.appName ?? "SosyalPilot"} showKeyHint={false} />
+        <McpGuide mcpUrl={mcpUrl} appName={sys.data?.appName ?? "Reblebi"} showKeyHint={false} />
       </Section>
       <Can role="admin">
         <Section title={t("API anahtarları")}>
           <p className="muted small">{t("Sunucudan sunucuya entegrasyonlar ve yerel MCP için: Authorization: Bearer sp_... başlığı. Anahtar sadece oluşturulurken gösterilir.")}</p>
           <div className="row">
-            <input className="input" style={{ width: 260 }} placeholder={t("Anahtar adı (ör. zapier)")} value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} maxLength={60} />
+            <input className="input" style={{ width: 260 }} placeholder={t("Anahtar adı (ör. otomasyon)")} value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} maxLength={60} />
             <button className="btn btn-primary" disabled={!newKeyName || createKey.isPending} onClick={() => createKey.mutate()}>
               <Plus /> {t("Oluştur")}
             </button>

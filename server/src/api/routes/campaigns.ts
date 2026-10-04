@@ -3,6 +3,8 @@ import { z } from "zod";
 import { notFound } from "../../core/i18n.js";
 import { campaignsRepo } from "../../core/repos/content.js";
 import { postsRepo } from "../../core/repos/posts.js";
+import { trashRepo } from "../../core/repos/trash.js";
+import { getDb } from "../../core/db.js";
 import { requireRole } from "../../services/access.js";
 import { runPlanner, scheduleCampaign } from "../../services/planner.js";
 import { ctxOf, requireCtx } from "../context.js";
@@ -49,7 +51,13 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
     const ctx = ctxOf(req);
     requireRole(ctx, "editor");
     const { deletePosts } = z.object({ deletePosts: z.stringbool().default(false) }).parse(req.query);
-    campaignsRepo.remove(ctx.orgId, Id.parse(req.params).id, deletePosts);
+    const id = Id.parse(req.params).id;
+    if (deletePosts) {
+      // Silinecek gönderiler önce çöp kutusuna (30 gün geri alınabilir)
+      const rows = getDb().prepare("SELECT id FROM posts WHERE campaign_id = ? AND org_id = ? AND status NOT IN ('published','partial')").all(id, ctx.orgId) as Array<{ id: string }>;
+      for (const r of rows) trashRepo.capture(ctx.orgId, r.id, ctx.userId);
+    }
+    campaignsRepo.remove(ctx.orgId, id, deletePosts);
     return { ok: true };
   });
 

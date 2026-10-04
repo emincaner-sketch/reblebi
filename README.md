@@ -1,6 +1,6 @@
-# SosyalPilot
+# Reblebi
 
-Çok platformlu sosyal medya yönetim platformu (SaaS). Gönderi ve hikaye paylaşır, DM'leri otomatik yanıtlar. İçerik takvimini ister panelden ister **Claude, ChatGPT, Gemini veya Grok** ile konuşarak kurarsın: AI asistanı MCP ile doğrudan bağlanır, gönderileri boş saatlere yerleştirir, SosyalPilot da zamanı gelince paylaşır. Arada Zapier gibi bir araca gerek yoktur.
+Çok platformlu sosyal medya yönetim platformu (SaaS). Gönderi ve hikaye paylaşır, DM'leri otomatik yanıtlar. İçerik takvimini ister panelden ister **Claude, ChatGPT, Gemini veya Grok** ile konuşarak kurarsın: AI asistanı MCP ile doğrudan bağlanır, gönderileri boş saatlere yerleştirir, Reblebi de zamanı gelince paylaşır. Arada Zapier gibi bir araca gerek yoktur.
 
 9 platform: **Instagram, Facebook Sayfası, Threads, WhatsApp Business, X (Twitter), LinkedIn, TikTok, YouTube, Telegram.**
 
@@ -85,13 +85,13 @@ Panelde **Ayarlar > API / MCP** ve herkese açık **/docs/mcp** sayfasında her 
 | Cursor | `~/.cursor/mcp.json` içine `{"mcpServers":{"sosyalpilot":{"url":"https://alanadin.com/mcp"}}}` |
 | Sadece stdio destekleyenler | `npx -y mcp-remote https://alanadin.com/mcp` |
 
-Bağlanırken SosyalPilot giriş ve onay ekranı açılır. Kullanıcı hangi çalışma alanına erişim vereceğini seçer; şifre ya da anahtar paylaşmaz. Tarayıcı açamayan ortamlarda `Authorization: Bearer sp_...` başlığıyla API anahtarı kullanılır.
+Bağlanırken Reblebi giriş ve onay ekranı açılır. Kullanıcı hangi çalışma alanına erişim vereceğini seçer; şifre ya da anahtar paylaşmaz. Tarayıcı açamayan ortamlarda `Authorization: Bearer sp_...` başlığıyla API anahtarı kullanılır.
 
 **Araçlar (33):** `get_workspace_context`, `list_channels`, `find_free_slots`, `validate_post`, `schedule_post`, `schedule_posts_batch`, `get_calendar`, `list_posts`, `get_post`, `update_post`, `reschedule_post`, `publish_now`, `cancel_post`, `duplicate_post`, `delete_post`, `list_campaigns`, `schedule_campaign`, `ai_plan_campaign`, `import_media`, `list_media`, `list_tags`, `generate_content`, `list_conversations`, `get_conversation`, `reply_conversation`, `draft_reply`, `set_conversation`, `list_rules`, `create_rule`, `update_rule`, `delete_rule`, `get_analytics`, `get_dashboard`.
 
 **Hazır komutlar:** `weekly_plan` (haftalık içerik planı), `inbox_triage` (gelen kutusu önceliklendirme).
 
-Asistanın tipik akışı: çalışma alanını okur (kanallar, saat dilimi, paylaşım saatleri, kotalar) → boş saatleri bulur → planı deneme modunda doğrular (karakter sınırı, zorunlu medya, geçmiş tarih) → onayınla tek seferde kampanya olarak kaydeder → SosyalPilot zamanı gelince paylaşır.
+Asistanın tipik akışı: çalışma alanını okur (kanallar, saat dilimi, paylaşım saatleri, kotalar) → boş saatleri bulur → planı deneme modunda doğrular (karakter sınırı, zorunlu medya, geçmiş tarih) → onayınla tek seferde kampanya olarak kaydeder → Reblebi zamanı gelince paylaşır.
 
 Örnek istekler:
 

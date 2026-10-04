@@ -344,6 +344,24 @@ export const postsRepo = {
         .all(orgId, from, limit) as Row[]
     ).map((r) => ({ ...rowToTarget(r), orgId: r.org_id as string, kind: r.kind as PostKind, content: r.pcontent as string, publishAt: (r.publish_at as string) ?? null }));
   },
+  /** Analitik raporu: [from, to) aralığında yayınlanan hedefler (ISO) */
+  publishedBetween(orgId: string, from: string, to: string, limit = 2000): Array<PostTarget & { orgId: string; kind: PostKind; content: string; publishAt: string | null; campaignId: string | null }> {
+    return (
+      getDb()
+        .prepare(
+          `SELECT t.*, p.org_id, p.kind, COALESCE(t.content, p.content) AS pcontent, p.publish_at, p.campaign_id FROM post_targets t JOIN posts p ON p.id = t.post_id
+           WHERE p.org_id = ? AND t.status = 'published' AND t.published_at >= ? AND t.published_at < ? ORDER BY t.published_at DESC LIMIT ?`,
+        )
+        .all(orgId, from, to, limit) as Row[]
+    ).map((r) => ({
+      ...rowToTarget(r),
+      orgId: r.org_id as string,
+      kind: r.kind as PostKind,
+      content: r.pcontent as string,
+      publishAt: (r.publish_at as string) ?? null,
+      campaignId: (r.campaign_id as string) ?? null,
+    }));
+  },
 };
 
 /* ---------------- Yorum işleri (ilk yorum / zincir yanıtları) ---------------- */

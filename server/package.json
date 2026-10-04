@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "SosyalPilot API, zamanlayıcı, DM motoru ve MCP sunucusu",
+  "description": "Reblebi API, zamanlayıcı, DM motoru ve MCP sunucusu",
   "main": "dist/api/main.js",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/api/main.ts",

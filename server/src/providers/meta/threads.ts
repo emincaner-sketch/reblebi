@@ -1,11 +1,13 @@
 import { config } from "../../core/config.js";
 import type { Channel } from "../../core/types.js";
 import { expiresIn, http, sleep } from "../http.js";
-import { ProviderError, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
-import { graph, waitForContainer } from "./common.js";
+import { ProviderError, type AudienceBreakdown, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
+import { fetchInsights, graph, insightBreakdown, insightNumber, waitForContainer } from "./common.js";
 
 const TH = "https://graph.threads.net/v1.0";
 const SCOPES = ["threads_basic", "threads_content_publish", "threads_manage_insights", "threads_manage_replies", "threads_read_replies"];
+/** Threads hesap insights'ı bu tarihten (2024-04-13) önceki günler için veri döndürmez */
+const THREADS_INSIGHTS_SINCE = 1712991600;
 
 async function container(userId: string, token: string, params: Record<string, unknown>): Promise<string> {
   const r = await graph<{ id: string }>(`${TH}/${userId}/threads`, token, { method: "POST", params });
@@ -169,6 +171,37 @@ export const threadsProvider: Provider = {
       if (typeof v === "number") metrics[d.name === "followers_count" ? "followers" : d.name] = v;
     }
     return metrics;
+  },
+
+  /**
+   * Hesap düzeyi günlük değerler (threads_manage_insights): görüntülenme ve bağlantı tıklaması.
+   * Beğeni/yanıt/yeniden paylaşım gönderi metriklerinden gelir; takipçi dengesi saatlik anlık görüntülerden.
+   */
+  async fetchDailyInsights(channel: Channel, range: { since: number; until: number }) {
+    if (range.until <= THREADS_INSIGHTS_SINCE) return {};
+    const rows = await fetchInsights(`${TH}/${channel.externalId}/threads_insights`, channel.accessToken, ["views", "clicks"], {
+      since: Math.max(range.since, THREADS_INSIGHTS_SINCE),
+      until: range.until,
+    });
+    const out: Record<string, number> = {};
+    const views = insightNumber(rows.get("views"));
+    if (views !== null) out.views = views;
+    // clicks yalnızca bağlantı kırılımıyla dönebilir: kırılımlar toplanır
+    const clicksRow = rows.get("clicks");
+    const clicks = insightNumber(clicksRow) ?? (clicksRow ? Object.values(insightBreakdown(clicksRow)).reduce((a, b) => a + b, 0) : null);
+    if (clicks !== null) out.clicks = clicks;
+    return out;
+  },
+
+  /** Takipçi kitlesi (en az 100 takipçide döner); her kırılım ayrı istek */
+  async fetchAudience(channel: Channel) {
+    const out: AudienceBreakdown = {};
+    for (const bd of ["country", "city", "age", "gender"] as const) {
+      const rows = await fetchInsights(`${TH}/${channel.externalId}/threads_insights`, channel.accessToken, ["follower_demographics"], { breakdown: bd });
+      const rec = insightBreakdown(rows.get("follower_demographics"));
+      if (Object.keys(rec).length) out[bd] = rec;
+    }
+    return out;
   },
 
   async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {

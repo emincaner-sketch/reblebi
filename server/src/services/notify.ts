@@ -1,3 +1,4 @@
+import { pushNotification } from "./webpush.js";
 import crypto from "node:crypto";
 import { config } from "../core/config.js";
 import { createLogger } from "../core/logger.js";
@@ -15,6 +16,8 @@ export function notify(orgId: string, input: { kind: Notification["kind"]; title
   } catch (e) {
     log.warn("bildirim yazılamadı", { e: e instanceof Error ? e.message : e });
   }
+  // Abone cihazlara anlık bildirim (arka planda; hata akışı durdurmaz)
+  void pushNotification(orgId, input).catch(() => undefined);
 }
 
 /** Org dilinde bildirim başlığı üret */
@@ -23,11 +26,17 @@ export function orgT(orgId: string, key: string, vars: Record<string, string | n
   return t(org?.locale ?? config.defaultLocale, key, vars);
 }
 
+import { dispatchWorkflowEvent } from "./workflow-engine.js";
+
 /**
  * Giden webhook: HMAC-SHA256 imzalı JSON POST.
- * Başlık: X-SosyalPilot-Signature: t=<unix>,v1=<hex(hmac(secret, t + "." + body))>
+ * Başlık: X-Reblebi-Signature: t=<unix>,v1=<hex(hmac(secret, t + "." + body))>
+ * (Eski entegrasyonlar bozulmasın diye aynı değer X-SosyalPilot-Signature başlığında da gönderilir.)
  */
 export function emitWebhook(orgId: string, event: WebhookEvent, data: Record<string, unknown>): void {
+  // Zapier tipi iç iş akışlarını anında tetikle
+  void dispatchWorkflowEvent(event as any, { ...data, event, orgId }, orgId);
+
   const hooks = webhooksRepo.forEvent(orgId, event);
   if (!hooks.length) return;
   const payload = JSON.stringify({ event, orgId, createdAt: new Date().toISOString(), data });
@@ -44,7 +53,7 @@ async function deliver(id: string, url: string, secret: string, payload: string,
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": `${config.appName}-Webhook/1.0`, "X-SosyalPilot-Signature": `t=${ts},v1=${sig}` },
+      headers: { "Content-Type": "application/json", "User-Agent": `${config.appName}-Webhook/1.0`, "X-Reblebi-Signature": `t=${ts},v1=${sig}`, "X-SosyalPilot-Signature": `t=${ts},v1=${sig}` },
       body: payload,
       signal: controller.signal,
     });

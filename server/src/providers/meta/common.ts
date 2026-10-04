@@ -176,3 +176,53 @@ export function parseSignedRequest(signed: string): { user_id?: string; algorith
     return null;
   }
 }
+
+/* ---------------- Insights yardımcıları (Instagram + Facebook Sayfa) ---------------- */
+
+interface InsightRow {
+  name: string;
+  values?: Array<{ value: number | Record<string, number> }>;
+  total_value?: { value?: number; breakdowns?: Array<{ results?: Array<{ dimension_values?: string[]; value?: number }> }> };
+}
+
+/** total_value ya da values[] biçimindeki tek metriği sayıya çevirir (günlük değerler toplanır) */
+export function insightNumber(row: InsightRow | undefined): number | null {
+  if (!row) return null;
+  if (typeof row.total_value?.value === "number") return row.total_value.value;
+  const nums = (row.values ?? []).map((v) => v.value).filter((v): v is number => typeof v === "number");
+  return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+}
+
+/** breakdown sonuçlarını { boyut: değer } nesnesine çevirir */
+export function insightBreakdown(row: InsightRow | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of row?.total_value?.breakdowns?.[0]?.results ?? []) {
+    const k = r.dimension_values?.[0];
+    if (k && typeof r.value === "number") out[k] = (out[k] ?? 0) + r.value;
+  }
+  return out;
+}
+
+/**
+ * Metrikleri önce tek istekte ister; Graph geçersiz/desteklenmeyen bir metrikte tüm isteği reddederse
+ * her metriği ayrı dener. Alınamayan metrik sonuçta yer almaz.
+ */
+export async function fetchInsights(path: string, token: string, metrics: string[], params: Record<string, unknown>): Promise<Map<string, InsightRow>> {
+  const out = new Map<string, InsightRow>();
+  const take = (rows: InsightRow[] | undefined) => {
+    for (const r of rows ?? []) out.set(r.name, r);
+  };
+  try {
+    take((await graph<{ data?: InsightRow[] }>(path, token, { params: { ...params, metric: metrics.join(",") } })).data);
+    return out;
+  } catch {
+    for (const m of metrics) {
+      try {
+        take((await graph<{ data?: InsightRow[] }>(path, token, { params: { ...params, metric: m } })).data);
+      } catch {
+        /* bu metrik bu hesapta yok ya da izin verilmemiş */
+      }
+    }
+    return out;
+  }
+}
