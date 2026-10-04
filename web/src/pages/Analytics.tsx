@@ -90,6 +90,8 @@ export default function AnalyticsPage() {
   if (q.isError && !d) return <ErrorBox error={q.error} />;
 
   const dates = d?.daily.map((x) => x.date) ?? [];
+  // Google İşletme Profili'nde takipçi kavramı yok: topluluk bölümü yerine işletme insights'ı (görüntülenme, arama, yol tarifi) öne çıkar
+  const noFollowers = network === "gmb";
   const unsupported = d?.networks.filter((n) => !n.supported && (!network || n.provider === network)) ?? [];
   const k = d?.kpis;
 
@@ -181,7 +183,7 @@ export default function AnalyticsPage() {
       ) : (
         <>
           <nav className="an-tabs" aria-label={t("Bölümler")}>
-            <a href="#an-community">{t("Topluluk")}</a>
+            {!noFollowers && <a href="#an-community">{t("Topluluk")}</a>}
             {(d.insights.available || d.audience) && <a href="#an-insights">{t("Hesap insights")}</a>}
             <a href="#an-posts">{t("Gönderiler")}</a>
             <a href="#an-timing">{t("Zamanlama")}</a>
@@ -189,7 +191,7 @@ export default function AnalyticsPage() {
           </nav>
 
           <div className="an-kpis">
-            <StatTile label={t("Takipçi")} value={compact(k!.followers.value ?? 0)} delta={delta(k!.followers.value, k!.followers.prev)} compare={compare} note={k!.followersDelta.value !== null ? t("{n} bu dönemde", { n: new Intl.NumberFormat(intl, { signDisplay: "always" }).format(k!.followersDelta.value) }) : t("takipçi verisi yok")} />
+            {!noFollowers && <StatTile label={t("Takipçi")} value={compact(k!.followers.value ?? 0)} delta={delta(k!.followers.value, k!.followers.prev)} compare={compare} note={k!.followersDelta.value !== null ? t("{n} bu dönemde", { n: new Intl.NumberFormat(intl, { signDisplay: "always" }).format(k!.followersDelta.value) }) : t("takipçi verisi yok")} />}
             <StatTile label={t("Yayınlanan gönderi")} value={num(k!.posts.value ?? 0)} delta={delta(k!.posts.value, k!.posts.prev)} compare={compare} note={t("{a}/{b} gönderinin metriği var", { a: k!.postsWithMetrics.value ?? 0, b: k!.posts.value ?? 0 })} />
             <StatTile label={t("Etkileşim")} value={compact(k!.interactions.value ?? 0)} delta={delta(k!.interactions.value, k!.interactions.prev)} compare={compare} note={t("beğeni + yorum + paylaşım + kaydetme")} />
             <StatTile label={t("Görüntülenme")} value={compact(k!.views.value ?? 0)} delta={delta(k!.views.value, k!.views.prev)} compare={compare} note={t("destekleyen ağlarda")} />
@@ -215,6 +217,7 @@ export default function AnalyticsPage() {
           )}
 
           {/* ---------------- Topluluk ---------------- */}
+          {!noFollowers && (
           <section id="an-community" className="an-section" aria-labelledby="an-community-h">
             <h2 id="an-community-h" className="an-h2">
               {t("Topluluk")}
@@ -303,6 +306,7 @@ export default function AnalyticsPage() {
               />
             </ChartCard>
           </section>
+          )}
 
           {/* ---------------- Hesap insights ve kitle ---------------- */}
           <InsightsSection d={d} network={network} compare={compare} />

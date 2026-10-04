@@ -82,7 +82,7 @@ export default function MediaPage() {
             <input
               className="input"
               style={{ flex: 1 }}
-              placeholder={t("Görsel/video adresi, Google Drive ya da Dropbox paylaşım bağlantısı")}
+              placeholder={t("Görsel/video bağlantısı (Drive, Dropbox da olur)")}
               title={t("Google Drive'da dosya \"bağlantıya sahip herkes\" ile paylaşılmış olmalı")}
               value={url}
               onChange={(e) => setUrl(e.target.value)}

@@ -10,27 +10,21 @@ function PostRow({ p, chMap, when }: { p: Post; chMap: Map<string, Channel>; whe
   const L = useLabels();
   const { t } = useI18n();
   return (
-    <tr>
-      <td style={{ width: 120 }} className="muted small">
-        {when}
-      </td>
-      <td>
-        <Link to={`/app/posts/${p.id}`} className="truncate" style={{ display: "block", maxWidth: 320, color: "inherit" }}>
-          <span className="badge" style={{ marginRight: 6 }}>
-            {L.kind(p.kind)}
-          </span>
-          {p.title || p.content || t("(metin yok)")}
-        </Link>
-      </td>
-      <td style={{ textAlign: "right" }}>
-        <span className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
-          {p.targets.map((tg) => {
-            const c = chMap.get(tg.channelId);
-            return c ? <ProviderIcon key={tg.id} provider={c.provider} size={20} /> : null;
-          })}
+    <li className="dash-row">
+      <span className="muted small dash-when">{when}</span>
+      <Link to={`/app/posts/${p.id}`} className="truncate" style={{ color: "inherit" }}>
+        <span className="badge" style={{ marginRight: 6 }}>
+          {L.kind(p.kind)}
         </span>
-      </td>
-    </tr>
+        {p.title || p.content || t("(metin yok)")}
+      </Link>
+      <span className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
+        {p.targets.map((tg) => {
+          const c = chMap.get(tg.channelId);
+          return c ? <ProviderIcon key={tg.id} provider={c.provider} size={20} /> : null;
+        })}
+      </span>
+    </li>
   );
 }
 
@@ -139,32 +133,30 @@ export default function DashboardPage() {
                   {t("Tümü →")}
                 </Link>
               </div>
-              <table className="table">
-                <tbody>
-                  {d.pendingApproval.map((p) => (
-                    <tr key={p.id}>
-                      <td>
-                        <Link to={`/app/posts/${p.id}`} className="truncate" style={{ display: "block", maxWidth: 420, color: "inherit" }}>
-                          {p.title || p.content || t("(metin yok)")}
-                        </Link>
-                        <div className="muted small">
-                          {L.kind(p.kind)} · {p.publishAt ? f.short(p.publishAt) : t("tarih yok")} · {p.source}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <Can role="admin" fallback={<StatusBadge status="pending_approval" />}>
-                          <button className="btn btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: p.id, ok: false })}>
-                            <X /> {t("Reddet")}
-                          </button>{" "}
-                          <button className="btn btn-primary btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: p.id, ok: true })}>
-                            <Check /> {t("Onayla")}
-                          </button>
-                        </Can>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ul className="dash-list">
+                {d.pendingApproval.map((p) => (
+                  <li key={p.id} className="dash-row dash-row-2 dash-wrap">
+                    <span style={{ minWidth: 0 }}>
+                      <Link to={`/app/posts/${p.id}`} className="truncate" style={{ display: "block", color: "inherit" }}>
+                        {p.title || p.content || t("(metin yok)")}
+                      </Link>
+                      <span className="muted small">
+                        {L.kind(p.kind)} · {p.publishAt ? f.short(p.publishAt) : t("tarih yok")} · {p.source}
+                      </span>
+                    </span>
+                    <span className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
+                      <Can role="admin" fallback={<StatusBadge status="pending_approval" />}>
+                        <button className="btn btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: p.id, ok: false })}>
+                          <X /> {t("Reddet")}
+                        </button>
+                        <button className="btn btn-primary btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: p.id, ok: true })}>
+                          <Check /> {t("Onayla")}
+                        </button>
+                      </Can>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -179,13 +171,11 @@ export default function DashboardPage() {
               {d.upcoming.length === 0 ? (
                 <Empty title={t("Planlı gönderi yok")} text={t("Yeni gönderi oluşturup tarih seç.")} />
               ) : (
-                <table className="table">
-                  <tbody>
-                    {d.upcoming.map((p) => (
-                      <PostRow key={p.id} p={p} chMap={chMap} when={f.short(p.publishAt)} />
-                    ))}
-                  </tbody>
-                </table>
+                <ul className="dash-list">
+                  {d.upcoming.map((p) => (
+                    <PostRow key={p.id} p={p} chMap={chMap} when={f.short(p.publishAt)} />
+                  ))}
+                </ul>
               )}
             </div>
             <div className="card">
@@ -195,23 +185,19 @@ export default function DashboardPage() {
               {d.recent.length === 0 ? (
                 <Empty title={t("Henüz yayın yok")} />
               ) : (
-                <table className="table">
-                  <tbody>
-                    {d.recent.map((p) => (
-                      <tr key={p.id}>
-                        <td>
-                          <Link to={`/app/posts/${p.id}`} className="truncate" style={{ display: "block", maxWidth: 300, color: "inherit" }}>
-                            {p.title || p.content || t("(metin yok)")}
-                          </Link>
-                          <div className="muted small">{f.date(p.publishedAt ?? p.updatedAt)}</div>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <StatusBadge status={p.status} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <ul className="dash-list">
+                  {d.recent.map((p) => (
+                    <li key={p.id} className="dash-row dash-row-2">
+                      <span style={{ minWidth: 0 }}>
+                        <Link to={`/app/posts/${p.id}`} className="truncate" style={{ display: "block", color: "inherit" }}>
+                          {p.title || p.content || t("(metin yok)")}
+                        </Link>
+                        <span className="muted small">{f.date(p.publishedAt ?? p.updatedAt)}</span>
+                      </span>
+                      <StatusBadge status={p.status} />
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </div>

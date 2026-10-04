@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, errMsg } from "./lib/api";
 import { useI18n } from "./lib/i18n";
 import { ME_KEY, SessionProvider, useMeQuery } from "./lib/session";
 import { BROWSER_TZ } from "./lib/tz";
 import Shell from "./components/Shell";
+import { Empty } from "./components/ui";
 import { AuthLayout } from "./pages/public/AuthPages";
 import DashboardPage from "./pages/Dashboard";
 import ChannelsPage from "./pages/Channels";
@@ -122,9 +123,27 @@ export default function AppArea() {
           <Route path="billing" element={<BillingPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="admin" element={<AdminPage />} />
-          <Route path="*" element={<Navigate to="/app" replace />} />
+          <Route path="*" element={<PanelNotFound />} />
         </Routes>
       </Shell>
     </SessionProvider>
+  );
+}
+
+/** Panelde olmayan adres: sessizce ana sayfaya atmak yerine ne olduğunu söyle (eski/yanlış bağlantılar fark edilsin) */
+function PanelNotFound() {
+  const { t } = useI18n();
+  return (
+    <div className="card" style={{ marginTop: 24 }}>
+      <Empty
+        title={t("Sayfa bulunamadı")}
+        text={t("Bu adres panelde yok; bağlantı eski ya da hatalı olabilir.")}
+        action={
+          <Link to="/app" className="btn btn-primary">
+            {t("Panele dön")}
+          </Link>
+        }
+      />
+    </div>
   );
 }

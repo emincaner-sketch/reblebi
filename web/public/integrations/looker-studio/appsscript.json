@@ -1,0 +1,17 @@
+{
+  "timeZone": "Europe/Istanbul",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "urlFetchWhitelist": ["https://reblebi.com/"],
+  "dataStudio": {
+    "name": "Reblebi",
+    "company": "Reblebi",
+    "logoUrl": "https://reblebi.com/icon-192.png",
+    "addonUrl": "https://reblebi.com/",
+    "supportUrl": "https://reblebi.com/",
+    "description": "Reblebi'ye bağlı sosyal medya kanallarının günlük metrikleri: takipçi, gönderi, etkileşim, erişim, profil ziyareti ve daha fazlası.",
+    "authType": ["KEY"],
+    "feeType": ["FREE"]
+  }
+}

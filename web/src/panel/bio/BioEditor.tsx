@@ -7,6 +7,7 @@ import { useSession } from "../../lib/session";
 import { useToast } from "../../components/ui";
 import { BrandSvg } from "../../components/BrandIcons";
 import { BIO_NETWORKS, type BioGridItem, type BioLink, type BioPage, type BioSocial, type BioTheme, type GridCandidate, type SlugStatus } from "./types";
+import { copyText } from "../../lib/clipboard";
 
 type Draft = Pick<BioPage, "slug" | "title" | "bio" | "avatarUrl" | "theme" | "links" | "socials" | "grid" | "published">;
 
@@ -139,12 +140,8 @@ export function BioEditor({ page, onDeleted }: { page: BioPage; onDeleted: () =>
   const prefix = page.url.slice(0, page.url.length - page.slug.length);
   const liveUrl = `${prefix}${draft.slug}`;
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(page.url);
-      toast(t("Adres kopyalandı"), "ok");
-    } catch {
-      toast(page.url, "info");
-    }
+    if (await copyText(page.url)) toast(t("Adres kopyalandı"), "ok");
+    else toast(page.url, "info");
   };
   const slugMsg: Record<SlugStatus, string> = {
     ok: t("Adres kullanılabilir"),

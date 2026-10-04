@@ -54,7 +54,8 @@ import {
 } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { useSession } from "../lib/session";
-import { Can, Empty, FeatureGate, Modal, PageHead, ProviderIcon, useToast } from "../components/ui";
+import { Can, Empty, FeatureGate, Modal, PageHead, ProviderIcon, Stat, useToast } from "../components/ui";
+import { copyText } from "../lib/clipboard";
 
 type TabMode = "workflows" | "rules" | "settings";
 type EditingRule = Omit<Rule, "id"> & { id?: string };
@@ -282,8 +283,7 @@ export default function AutomationPage() {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast(t("Panoya kopyalandı"), "ok");
+    void copyText(text).then((ok) => toast(ok ? t("Panoya kopyalandı") : t("Kopyalanamadı; metni seçip elle kopyala"), ok ? "ok" : "err"));
   };
 
   const publicOrigin = window.location.origin;
@@ -314,7 +314,7 @@ export default function AutomationPage() {
       />
 
       {/* Üst Sekmeler */}
-      <div className="segmented" style={{ marginBottom: 20 }}>
+      <div className="segmented seg-scroll" style={{ marginBottom: 20 }}>
         <button className={activeTab === "workflows" ? "active" : ""} onClick={() => setActiveTab("workflows")}>
           <Zap style={{ width: 15 }} /> {t("İş Akışları")}
         </button>
@@ -333,26 +333,10 @@ export default function AutomationPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {/* İstatistik Çubuğu */}
           <div className="grid grid-4">
-            <div className="card" style={{ padding: 14 }}>
-              <div className="muted small">{t("Toplam İş Akışı")}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{workflows.data?.length ?? 0}</div>
-            </div>
-            <div className="card" style={{ padding: 14 }}>
-              <div className="muted small">{t("Aktif İş Akışları")}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: "var(--ok)" }}>
-                {workflows.data?.filter((w) => w.enabled).length ?? 0}
-              </div>
-            </div>
-            <div className="card" style={{ padding: 14 }}>
-              <div className="muted small">{t("Toplam Çalıştırma")}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: "var(--accent)" }}>
-                {workflows.data?.reduce((acc, w) => acc + (w.runCount || 0), 0) ?? 0}
-              </div>
-            </div>
-            <div className="card" style={{ padding: 14 }}>
-              <div className="muted small">{t("Son Çalıştırma Kayıtları")}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{allRuns.data?.length ?? 0}</div>
-            </div>
+            <Stat label={t("Toplam İş Akışı")} value={workflows.data?.length ?? 0} />
+            <Stat label={t("Aktif İş Akışları")} value={workflows.data?.filter((w) => w.enabled).length ?? 0} />
+            <Stat label={t("Toplam Çalıştırma")} value={workflows.data?.reduce((acc, w) => acc + (w.runCount || 0), 0) ?? 0} />
+            <Stat label={t("Son Çalıştırma Kayıtları")} value={allRuns.data?.length ?? 0} />
           </div>
 
           {/* İş Akışları Listesi */}

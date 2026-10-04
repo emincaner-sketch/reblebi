@@ -27,6 +27,7 @@ import {
 import { useI18n, useLabels } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
 import { Modal, ProviderIcon, StatusBadge, useLocalState, useToast } from "../components/ui";
+import { copyText } from "../lib/clipboard";
 
 interface TargetState {
   channelId: string;
@@ -353,8 +354,7 @@ export default function ComposerPage() {
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["post", id] });
       const url = `${window.location.origin}/preview/${r.token}`;
-      navigator.clipboard?.writeText(url);
-      toast(t("Önizleme linki kopyalandı"), "ok");
+      void copyText(url).then((ok) => toast(ok ? t("Önizleme linki kopyalandı") : url, ok ? "ok" : "info"));
     },
     onError: (e) => toast(errMsg(e), "err"),
   });
@@ -1078,7 +1078,7 @@ export default function ComposerPage() {
                       </a>
                       <span className="row" style={{ gap: 4 }}>
                         <span className="muted">{pl.expiresAt ? f.day(pl.expiresAt) : "∞"}</span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/preview/${pl.token}`).then(() => toast(t("Kopyalandı"), "ok"))}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => void copyText(`${window.location.origin}/preview/${pl.token}`).then((ok) => toast(ok ? t("Kopyalandı") : t("Kopyalanamadı; metni seçip elle kopyala"), ok ? "ok" : "err"))}>
                           {t("Kopyala")}
                         </button>
                         <button className="btn btn-ghost btn-sm" onClick={() => revokePreview.mutate(pl.token)} aria-label={t("İptal et")}>
@@ -1205,8 +1205,7 @@ export default function ComposerPage() {
                         <button
                           className="btn btn-sm"
                           onClick={() => {
-                            navigator.clipboard?.writeText(v.text);
-                            toast(t("Kopyalandı"), "ok");
+                            void copyText(v.text).then((ok) => toast(ok ? t("Kopyalandı") : t("Kopyalanamadı; metni seçip elle kopyala"), ok ? "ok" : "err"));
                           }}
                         >
                           {t("Kopyala")}

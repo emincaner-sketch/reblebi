@@ -99,7 +99,7 @@ export default function TeamPage() {
             <div className="card-title">
               <h2>{t("Üyeler ({n})", { n: q.data.members.length })}</h2>
             </div>
-            <table className="table">
+            <table className="table table-stack">
               <tbody>
                 {q.data.members.map((m) => {
                   const self = m.userId === s.user.id;
@@ -149,7 +149,7 @@ export default function TeamPage() {
               <div className="card-title">
                 <h2>{t("Bekleyen davetler")}</h2>
               </div>
-              <table className="table">
+              <table className="table table-stack">
                 <tbody>
                   {q.data.invitations.map((i) => (
                     <tr key={i.id}>

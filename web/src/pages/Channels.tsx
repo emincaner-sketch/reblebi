@@ -6,6 +6,7 @@ import { api, errMsg, PROVIDER_NAME, type Channel, type Customer, type OrgInfo, 
 import { useI18n } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
 import { Avatar, Can, Empty, Modal, PageHead, ProviderIcon, StatusBadge, UsageBar, useToast } from "../components/ui";
+import { copyText } from "../lib/clipboard";
 
 function ChannelSettings({ c, customers, onClose }: { c: Channel; customers: Customer[] | null; onClose: () => void }) {
   const { t } = useI18n();
@@ -134,10 +135,12 @@ function ShopifyConnectModal({ onClose }: { onClose: () => void }) {
   const webhookUrl = `${window.location.origin.replace(":5500", ":4500")}/api/workflows/webhook/${s.org.id}/shopify.order_created`;
 
   const copy = () => {
-    navigator.clipboard.writeText(webhookUrl);
-    setCopied(true);
-    toast(t("Shopify Webhook URL'si kopyalandı!"), "ok");
-    setTimeout(() => setCopied(false), 2500);
+    void copyText(webhookUrl).then((ok) => {
+      if (!ok) return toast(t("Kopyalanamadı; metni seçip elle kopyala"), "err");
+      setCopied(true);
+      toast(t("Shopify Webhook URL'si kopyalandı!"), "ok");
+      setTimeout(() => setCopied(false), 2500);
+    });
   };
 
   return (

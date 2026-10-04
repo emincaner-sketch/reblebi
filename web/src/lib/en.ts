@@ -2135,4 +2135,43 @@ export const EN: Record<string, string> = {
   "Sponsorlu": "Sponsored",
   "Reklam metnin burada görünür.": "Your ad text appears here.",
   "Kampanya, reklam seti ve reklam DURAKLATILMIŞ oluşturulur; sen başlatana kadar hiçbir harcama yapılmaz. Meta reklamı yayından önce ayrıca inceler.": "The campaign, ad set and ad are created PAUSED; nothing is spent until you start it. Meta also reviews the ad before it runs.",
+  // Pano
+  "Kopyalanamadı; metni seçip elle kopyala": "Couldn't copy; select the text and copy it manually",
+  // Mobil takvim
+  "Bu gün için gönderi yok.": "No posts on this day.",
+  // Shopify kurulumu ve otomasyon
+  "Yeni Zap / İş Akışı": "New Zap / workflow",
+  "Shopify Webhook URL'si kopyalandı!": "Shopify webhook URL copied!",
+  "Shopify Mağazasını Bağla": "Connect your Shopify store",
+  "Shopify mağazanızdaki yeni siparişleri, ödemeleri veya terk edilen sepetleri otomatik olarak Slack, Discord, Telegram veya içerik takviminize aktarın.": "Automatically send new orders, payments or abandoned carts from your Shopify store to Slack, Discord, Telegram or your content calendar.",
+  "Size Özel Shopify Webhook URL'niz:": "Your personal Shopify webhook URL:",
+  "Shopify Panelinde Kurulum Adımları (3 Dakika):": "Setup steps in Shopify (3 minutes):",
+  "Shopify Admin": "Shopify Admin:",
+  "panelinize girin ve sol alttan": "open it and click",
+  "Ayarlar (Settings) > Bildirimler (Notifications)": "Settings > Notifications",
+  "bölümüne tıklayın.": "(bottom left).",
+  "Sayfanın en altındaki": "Scroll down to",
+  "Webhook'lar (Webhooks)": "Webhooks",
+  "kısmına inin ve": "at the bottom of the page and click the",
+  "Webhook oluştur (Create webhook)": "Create webhook",
+  "butonuna basın.": "button.",
+  "Olay (Event):": "Event:",
+  "Sipariş oluşturuldu (Order creation)": "Order creation",
+  "veya": "or",
+  "Sepet oluşturuldu (Cart creation)": "Cart creation",
+  "seçin.": "(choose one).",
+  "Biçim (Format):": "Format:",
+  "seçili olsun.": "should be selected.",
+  "URL:": "URL:",
+  "Yukarıda kopyaladığınız Reblebi Webhook URL'sini yapıştırın ve": "Paste the Reblebi webhook URL you copied above and click the",
+  "Kaydet (Save)": "Save",
+  "Hazır Otomasyon Şablonunu Başlatın:": "Start the ready-made automation template:",
+  "Otomasyonu Aç": "Open automation",
+  // Medya
+  "Görsel/video bağlantısı (Drive, Dropbox da olur)": "Image/video link (Drive, Dropbox work too)",
+  // Looker Studio
+  "Looker Studio: Ayarlar > API anahtarları'ndan bir anahtar oluştur; bağlayıcı dosyalarını script.google.com'da yeni bir projeye yapıştırıp Looker Studio bağlayıcısı olarak dağıt, sonra bu anahtarla bağlan.": "Looker Studio: create a key under Settings > API keys, paste the connector files into a new project at script.google.com, deploy it as a Looker Studio connector, then connect with that key.",
+  // Panel 404
+  "Bu adres panelde yok; bağlantı eski ya da hatalı olabilir.": "This address doesn't exist in the dashboard; the link may be old or wrong.",
+  "Panele dön": "Back to dashboard",
 };

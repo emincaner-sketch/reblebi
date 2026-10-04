@@ -72,6 +72,8 @@ export default function PostsPage() {
   const mondayOf = (y: number, m: number, d: number) => addDays(y, m, d, -((weekdayOf(y, m, d) + 6) % 7));
   const [week, setWeek] = useState(() => mondayOf(today.year, today.month, today.day));
   const [over, setOver] = useState<string | null>(null);
+  // Telefonda ay görünümü sıkışık: güne dokununca o günün gönderileri takvimin altında listelenir
+  const [pick, setPick] = useState<string | null>(null);
   const weekScroll = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
   const status = (params.get("status") as PostStatus | null) ?? "";
@@ -209,7 +211,11 @@ export default function PostsPage() {
     const d = new Date(Date.UTC(month.year, month.month - 1 + n, 1));
     setMonth({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
   };
+  const inMonth = (k: string) => k.startsWith(`${month.year}-${pad2(month.month)}-`);
+  const picked = pick && inMonth(pick) ? pick : inMonth(todayKey) ? todayKey : keyOf(month.year, month.month, 1);
+  const pickedItems = byDay.get(picked) ?? [];
   const goToday = () => {
+    setPick(null);
     setMonth({ year: today.year, month: today.month });
     setWeek(mondayOf(today.year, today.month, today.day));
   };
@@ -325,7 +331,7 @@ export default function PostsPage() {
             </div>
           </div>
           {filters}
-          {s.can("editor") && <p className="muted small" style={{ margin: "0 0 10px" }}>{t("İpucu: gönderileri sürükleyip başka bir güne ya da saate bırakarak yeniden zamanlayabilirsin.")}</p>}
+          {s.can("editor") && <p className="muted small cal-hint" style={{ margin: "0 0 10px" }}>{t("İpucu: gönderileri sürükleyip başka bir güne ya da saate bırakarak yeniden zamanlayabilirsin.")}</p>}
           {effView === "week" && (
             <div className="best-bar">
               <label className="row small" style={{ gap: 8, cursor: "pointer" }}>
@@ -418,7 +424,8 @@ export default function PostsPage() {
               </div>
             </div>
           ) : (
-          <div className="cal-scroll">
+          <>
+          <div className="cal-scroll cal-month">
             <div className="cal-head">
               {DAYS[locale].map((d) => (
                 <div key={d}>{d}</div>
@@ -431,12 +438,21 @@ export default function PostsPage() {
                 return (
                   <div
                     key={k}
-                    className={`cal-day ${d.month !== month.month ? "other" : ""} ${k === todayKey ? "today" : ""} ${over === k ? "drop-over" : ""}`}
+                    className={`cal-day ${d.month !== month.month ? "other" : ""} ${k === todayKey ? "today" : ""} ${over === k ? "drop-over" : ""} ${k === picked ? "picked" : ""}`}
+                    onClick={() => setPick(k)}
                     onDoubleClick={() => s.can("editor") && nav(`/app/posts/new?date=${k}`)}
                     title={s.can("editor") ? t("Çift tık: bu güne gönderi planla") : ""}
                     {...dropProps(k, d)}
                   >
                     <span className="num">{d.day}</span>
+                    {items.length > 0 && (
+                      <span className="cal-dots" aria-label={t("{n} gönderi", { n: items.length })}>
+                        {items.slice(0, 3).map((p) => (
+                          <i key={p.id} className={p.status} />
+                        ))}
+                        {items.length > 3 && <b>+{items.length - 3}</b>}
+                      </span>
+                    )}
                     {items.slice(0, 4).map((p) => (
                       <div
                         key={p.id}
@@ -462,12 +478,43 @@ export default function PostsPage() {
                         </span>
                       </div>
                     ))}
-                    {items.length > 4 && <span className="small muted">{t("+{n} daha", { n: items.length - 4 })}</span>}
+                    {items.length > 4 && <span className="small muted cal-more">{t("+{n} daha", { n: items.length - 4 })}</span>}
                   </div>
                 );
               })}
             </div>
           </div>
+          <div className="cal-daylist">
+            <div className="row-between">
+              <strong>{new Intl.DateTimeFormat(intl, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${picked}T12:00:00Z`))}</strong>
+              <Can role="editor">
+                <Link to={`/app/posts/new?date=${picked}`} className="btn btn-sm">
+                  <CalendarPlus /> {t("Planla")}
+                </Link>
+              </Can>
+            </div>
+            {pickedItems.length === 0 ? (
+              <p className="muted small" style={{ margin: "8px 0 0" }}>{t("Bu gün için gönderi yok.")}</p>
+            ) : (
+              pickedItems.map((p) => (
+                <Link key={p.id} to={`/app/posts/${p.id}`} className={`cal-item ${p.status}`}>
+                  <span className="t">{f.time(p.publishAt ?? p.createdAt)}</span>
+                  {p.targets.slice(0, 4).map((tg) => {
+                    const c = chMap.get(tg.channelId);
+                    return c ? (
+                      <span key={tg.id} style={{ marginRight: 3 }}>
+                        <ProviderIcon provider={c.provider} size={13} />
+                      </span>
+                    ) : null;
+                  })}
+                  <span className="truncate" style={{ display: "block" }}>
+                    {p.title || p.content || L.kind(p.kind)}
+                  </span>
+                </Link>
+              ))
+            )}
+          </div>
+          </>
           )}
         </div>
       ) : (
@@ -486,7 +533,7 @@ export default function PostsPage() {
             />
           ) : (
             <div className="table-wrap">
-              <table className="table">
+              <table className="table table-stack">
                 <thead>
                   <tr>
                     <th>{t("İçerik")}</th>

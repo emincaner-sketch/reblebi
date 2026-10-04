@@ -4,7 +4,9 @@ import { Lock, X } from "lucide-react";
 import { PROVIDER_COLOR, PROVIDER_NAME, PROVIDER_SHORT, type Channel, type PlanFeature, type PostStatus, type ProviderId, type Quota, type Role } from "../lib/api";
 import { useLabels, useT } from "../lib/i18n";
 import { useOptionalSession } from "../lib/session";
+import { SITE_NAME } from "../config/site";
 import { BrandSvg } from "./BrandIcons";
+import { copyText } from "../lib/clipboard";
 
 /* ---------------- Toast ---------------- */
 
@@ -66,6 +68,10 @@ export function Modal({ title, onClose, children, footer, large }: { title: Reac
 /* ---------------- Sayfa iskeleti ---------------- */
 
 export function PageHead({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
+  // Panel sekme başlığı sayfanın adı olur (ör. "Studio · Reblebi")
+  useEffect(() => {
+    if (typeof title === "string") document.title = `${title} · ${SITE_NAME}`;
+  }, [title]);
   return (
     <div className="page-head">
       <div>
@@ -230,7 +236,7 @@ export function Empty({ icon, title, text, action }: { icon?: ReactNode; title: 
       {icon}
       <h3>{title}</h3>
       {text && <p>{text}</p>}
-      {action && <div style={{ marginTop: 14 }}>{action}</div>}
+      {action && <div style={{ marginTop: 14, display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8 }}>{action}</div>}
     </div>
   );
 }
@@ -317,7 +323,7 @@ export function Copyable({ text, display }: { text: string; display?: string }) 
       role="button"
       tabIndex={0}
       onClick={() => {
-        navigator.clipboard?.writeText(text).then(() => toast(t("Kopyalandı"), "ok"));
+        void copyText(text).then((ok) => toast(ok ? t("Kopyalandı") : t("Kopyalanamadı; metni seçip elle kopyala"), ok ? "ok" : "err"));
       }}
     >
       {display ?? text}

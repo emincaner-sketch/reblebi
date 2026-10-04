@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { useI18n } from "../lib/i18n";
+import { copyText } from "../lib/clipboard";
 
 /**
  * AI asistanlarını (Claude, ChatGPT, Gemini, Grok, Cursor...) uzak MCP sunucusuna bağlama rehberi.
@@ -22,7 +23,8 @@ function CodeBlock({ code }: { code: string }) {
         className="btn btn-ghost btn-sm code-copy"
         aria-label={t("Kopyala")}
         onClick={() => {
-          void navigator.clipboard?.writeText(code).then(() => {
+          void copyText(code).then((ok) => {
+            if (!ok) return;
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           });

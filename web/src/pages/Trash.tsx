@@ -82,7 +82,7 @@ export default function TrashPage() {
           <Empty icon={<Trash2 />} title={t("Çöp kutusu boş")} text={t("Sildiğin gönderiler burada {days} gün boyunca geri alınabilir.", { days })} action={<Link to="/app/posts" className="btn">{t("Takvime dön")}</Link>} />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-stack">
               <caption className="sr-only">{t("Silinen gönderiler")}</caption>
               <thead>
                 <tr>

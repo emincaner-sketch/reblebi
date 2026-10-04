@@ -448,7 +448,15 @@ export default function ReportPage() {
               </a>
             )}
             <p className="small muted" style={{ margin: 0 }}>
-              {t("Looker Studio: Ayarlar > API anahtarları'ndan bir anahtar oluştur; depodaki integrations/looker-studio bağlayıcısını Google Apps Script'te dağıtıp bu anahtarla bağlan.")}
+              {t("Looker Studio: Ayarlar > API anahtarları'ndan bir anahtar oluştur; bağlayıcı dosyalarını script.google.com'da yeni bir projeye yapıştırıp Looker Studio bağlayıcısı olarak dağıt, sonra bu anahtarla bağlan.")}
+            </p>
+            <p className="small row" style={{ margin: 0, gap: 12, flexWrap: "wrap" }}>
+              <a href="/integrations/looker-studio/Code.gs" download>
+                Code.gs
+              </a>
+              <a href="/integrations/looker-studio/appsscript.json" download>
+                appsscript.json
+              </a>
             </p>
           </section>
         </div>

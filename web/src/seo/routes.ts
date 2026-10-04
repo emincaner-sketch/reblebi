@@ -39,12 +39,18 @@ export function matchPublicRoute(pathname: string): PublicRoute | null {
   return PUBLIC_ROUTES.find((r) => r.path === p) ?? null;
 }
 
-/** Herkese açık içerik sayfalarında dil URL'den gelir; diğer yollarda null (kullanıcı tercihi geçerli) */
+/** Panel ve hesap ekranları: dil kullanıcının tercihinden gelir (sunucudaki SPA_PATHS ile aynı kökler) */
+const APP_PREFIXES = ["/app", "/login", "/signup", "/forgot", "/reset-password", "/verify", "/invite", "/consent", "/preview", "/pricing", "/kanallar", "/gonderiler", "/gelen-kutusu", "/otomasyon", "/analitik", "/ayarlar", "/l/"];
+
+/** Herkese açık içerik sayfalarında dil URL'den gelir; panel yollarında null (kullanıcı tercihi geçerli) */
 export function localeFromPath(pathname: string): Locale | null {
   const r = matchPublicRoute(pathname);
   if (r) return r.locale;
   // /en altındaki bilinmeyen adresler (404) de İngilizce; panel yolları /en altında değil
-  return pathname === "/en" || pathname.startsWith("/en/") ? "en" : null;
+  if (pathname === "/en" || pathname.startsWith("/en/")) return "en";
+  if (APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p.endsWith("/") ? p : `${p}/`))) return null;
+  // Diğer bilinmeyen adresler sunucuda Türkçe 404 (dist/404.html) olarak çizilir: istemci de Türkçe kalmalı
+  return "tr";
 }
 
 export function pathFor(key: PageKey, locale: Locale): string {

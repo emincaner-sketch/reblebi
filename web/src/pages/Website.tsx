@@ -11,6 +11,7 @@ import { delta, fmtCompact, fmtDay, fmtNum } from "../panel/charts/format";
 import { seriesVar } from "../panel/charts/palette";
 import { StatTile } from "../panel/charts/StatTile";
 import { TimeChart } from "../panel/charts/TimeChart";
+import { copyText } from "../lib/clipboard";
 import "../panel/charts/charts.css";
 import "../panel/analytics/competitors.css";
 
@@ -303,7 +304,8 @@ function Snippet({ code }: { code: string }) {
         type="button"
         className="btn btn-sm"
         onClick={() => {
-          void navigator.clipboard?.writeText(code).then(() => {
+          void copyText(code).then((ok) => {
+            if (!ok) return;
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           });

@@ -99,6 +99,25 @@ Yayın (2026-10-04 16:38): commit `397cc8a` (`panel-metricool` dalı) `railway u
 
 Doğrulama: sunucu testleri 136/136 (dış istek yok), tip denetimi temiz, web derlemesi + ön-render tamam.
 
+## Yedinci tur: tüm site ekran görüntüsü ve tuş taraması (2026-10-04)
+
+Headless Edge ile 12 herkese açık sayfa (canlı) ve 29 panel sayfası (yerel üretim derlemesi, demo verisi) masaüstü + mobilde çekildi; panelde 320 tuş tek tek tıklandı (yıkıcı onay pencereleri iptal edildi). Konsol hatası, kırık iç bağlantı ya da 5xx yok. Herkese açık SEO tam: başlık/açıklama uzunlukları, canonical, hreflang (tr/en/x-default), OG/Twitter görseli, JSON-LD, tek H1, alt metin, robots/sitemap, 301 yönlendirmeleri, Brotli, uzun önbellek.
+
+| Bulgu | Düzeltme | Dosyalar |
+|---|---|---|
+| İngilizce tarayıcıda Türkçe 404 İngilizceye dönüyor, React hidrasyon hatası (#418) | Bilinmeyen adres Türkçe kalır; `/en/...` İngilizce | `seo/routes.ts` |
+| "Kopyala" tuşları izin yoksa yakalanmamış hata | Ortak `copyText` (eski yönteme düşer, hata vermez), 9 yer | `lib/clipboard.ts` |
+| Giriş/kayıt ve panel sekme başlıkları hep aynı | Sayfa başına `document.title` | `AuthPages.tsx`, `components/ui.tsx` |
+| Mobil takvim yatay kayıyordu | Sıkışık ay ızgarası (durum noktaları) + seçili günün listesi | `pages/Posts.tsx`, `styles.css` |
+| Panel listeleri ve tablolar mobilde sağdan taşıyor, işlem tuşları (Geri al, Onayla) görünmüyor | Izgara satırları; `table-stack` dar ekranda satırları alt alta dizer | `Dashboard.tsx`, `Posts.tsx`, `Trash.tsx`, `Team.tsx` |
+| Otomasyon: sekme ikonları hizasız, boş durum tuşları sola kaymış ve ikonları dev | Ortak `Stat` kartları, kayan sekmeler, boş durum ikonu yalnızca kendi ikonu | `Automation.tsx`, `components/ui.tsx`, `styles.css` |
+| Google Business analitiğinde anlamsız boş "Takipçi" bölümü | GMB'de topluluk bölümü yok, işletme insights'ı önde | `pages/Analytics.tsx` |
+| Looker Studio açıklaması müşteriye "depodaki dosya"yı gösteriyordu | Bağlayıcı dosyaları panelden indirilir | `pages/Report.tsx`, `public/integrations/looker-studio/` |
+| Panelde olmayan adres sessizce ana sayfaya atıyordu | "Sayfa bulunamadı" + Panele dön | `AppArea.tsx` |
+| 27 eksik İngilizce çeviri (Shopify kurulumu, otomasyon) | Tamamlandı; eksik 0 | `lib/en.ts` |
+
+Bilinçli bırakılanlar: haftalık takvim, saat × gün ısı haritası ve A4 rapor önizlemesi telefonda yatay kayar (içerik genişliği sabit). Demo ortamında Google Ads "Öneriler" sahte jetonla 400 verir (gerçek hesapta Google'dan çekilir).
+
 ## Canlıya alma: platform ayarları
 
 Kod hazır; aşağıdakiler yapılmadan ilgili özellik canlıda veri getirmez (hata vermez, ekran açıklama gösterir).

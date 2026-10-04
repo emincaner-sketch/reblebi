@@ -20,7 +20,7 @@ Kaynak uç nokta: `GET /api/export/daily?from=YYYY-MM-DD&to=YYYY-MM-DD` (en fazl
 1. Reblebi panelinde **Ayarlar > API anahtarları**'ndan yeni bir anahtar oluştur (`sp_` ile başlar). Anahtar çalışma alanının tüm verisini okuyabilir; yalnızca güvendiğin raporlarda kullan.
 2. https://script.google.com adresinde **Yeni proje** aç.
 3. Proje ayarlarından **"appsscript.json" manifest dosyasını düzenleyicide göster** seçeneğini aç.
-4. `Code.gs` ve `appsscript.json` içeriklerini bu klasördekilerle değiştir. Kendi sunucunu kullanıyorsan `appsscript.json` içindeki `urlFetchWhitelist` ve `Code.gs` içindeki `DEFAULT_URL` değerlerini kendi adresinle değiştir.
+4. `Code.gs` ve `appsscript.json` içeriklerini bu klasördekilerle değiştir (panelde Analitik > Rapor > Dışa aktar bölümünden de indirilebilir; o kopyalar `web/public/integrations/looker-studio/` altında, burayı değiştirirsen onları da güncelle). Kendi sunucunu kullanıyorsan `appsscript.json` içindeki `urlFetchWhitelist` ve `Code.gs` içindeki `DEFAULT_URL` değerlerini kendi adresinle değiştir.
 5. **Dağıt > Yeni dağıtım > Tür: Looker Studio bağlayıcısı** (yoksa "Dağıtımları yönet > Head dağıtımı"nın kimliğini kullan).
 6. Looker Studio'da **Oluştur > Veri kaynağı > Kendi bağlayıcın (Build your own)** bölümüne dağıtım kimliğini yapıştır, yetki ver, API anahtarını gir.
 7. Rapor oluşturup tarih aralığı denetimi ekle.

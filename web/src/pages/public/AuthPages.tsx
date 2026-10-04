@@ -48,6 +48,10 @@ export function AuthLayout({ title, sub, children, footer, variant = "default" }
   const cfg = usePublicConfig();
   const c = cfg.data;
   const appName = c?.appName ?? SITE_NAME;
+  // Sekme başlığı: sayfanın adı (ör. "Panele giriş | Reblebi")
+  useEffect(() => {
+    document.title = `${title} | ${appName}`;
+  }, [title, appName]);
   const trialPlan = c ? (c.plans.find((p) => p.id === c.trialPlan)?.name[locale] ?? c.trialPlan) : "";
   const note =
     variant === "signup" && c && c.trialDays > 0

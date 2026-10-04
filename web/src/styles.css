@@ -384,6 +384,10 @@ code {
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
   .main { padding: 16px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  /* Sayı kartları telefonda da ikişerli: tek sütun sayfayı gereksiz uzatıyor */
+  .grid-4:has(> .stat) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .grid-4 > .stat { padding: 14px; }
+  .grid-4 > .stat .stat-value { font-size: 24px; }
 }
 
 /* ---------- Stats ---------- */
@@ -760,6 +764,39 @@ select option {
   border-bottom: none;
 }
 
+/* Panel özet listeleri: tablo yerine ızgara satırı, uzun metin dar ekranda taşmadan kısalır */
+/* Dar ekranda satırlar alt alta: hücreler sıkışıp kelime kelime kırılmaz */
+@media (max-width: 560px) {
+  .table-stack, .table-stack tbody { display: block; }
+  .table-stack thead { display: none; }
+  .table-stack td:first-child { max-width: none !important; }
+  .table-stack tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 2px; border-bottom: 1px solid var(--border); }
+  .table-stack tr:last-child { border-bottom: none; }
+  .table-stack td { display: block; padding: 0; border: none; width: auto !important; min-width: 0; }
+  .table-stack td:first-child { flex: 1 1 100%; }
+  .table-stack td:last-child { margin-left: auto; }
+}
+
+.dash-list { list-style: none; margin: 0; padding: 0; }
+.dash-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.dash-row:last-child { border-bottom: none; }
+.dash-row-2 { grid-template-columns: minmax(0, 1fr) auto; }
+.dash-row-2 > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.dash-when { white-space: nowrap; min-width: 92px; }
+@media (max-width: 560px) {
+  .dash-row { padding: 10px 2px; gap: 8px; }
+  .dash-when { min-width: 0; }
+  .dash-wrap { grid-template-columns: minmax(0, 1fr); }
+}
+
 .table tr:hover td {
   background: var(--table-hover);
 }
@@ -846,12 +883,15 @@ tr.clickable {
   color: var(--text-3);
 }
 
-.empty svg {
+/* Yalnızca boş durumun kendi ikonu; içindeki düğme ikonları normal boyutta kalır */
+.empty > svg {
   width: 40px;
   height: 40px;
   margin-bottom: 12px;
   opacity: 0.8;
 }
+
+.empty .row { justify-content: center; }
 
 .empty h3 {
   color: var(--text);
@@ -978,6 +1018,10 @@ tr.clickable {
 }
 
 .segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: none;
   background: transparent;
   padding: 6px 12px;
@@ -999,6 +1043,16 @@ tr.clickable {
   font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
+
+.segmented button svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* Uzun sekmeler dar ekranda alt satıra kırılmaz, yatay kayar */
+.seg-scroll { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg-scroll button { white-space: nowrap; flex: none; }
 
 .segmented-sm button {
   padding: 3px 8px;
@@ -2170,6 +2224,31 @@ fieldset.plain {
 
 .cal-scroll > * {
   min-width: 720px;
+}
+
+/* Ay görünümü telefonda: yatay kaydırma yerine sıkışık ızgara (gün + durum noktaları) ve seçili günün listesi */
+.cal-dots, .cal-daylist { display: none; }
+@media (max-width: 640px) {
+  .cal-hint { display: none; }
+  .cal-month { overflow: visible; }
+  .cal-month > * { min-width: 0; }
+  .cal-month .cal-head, .cal-month .cal-grid { gap: 3px; }
+  .cal-month .cal-head div { padding: 0; text-align: center; font-size: 10px; letter-spacing: 0; }
+  .cal-month .cal-day { min-height: 50px; padding: 6px 2px; align-items: center; gap: 5px; border-radius: 8px; cursor: pointer; }
+  .cal-month .cal-day.picked { border-color: var(--accent); background: var(--accent-soft); }
+  .cal-month .cal-day .num { font-size: 12.5px; color: var(--text-2); }
+  .cal-month .cal-day.today .num { color: var(--accent); }
+  .cal-month .cal-item, .cal-month .cal-more { display: none; }
+  .cal-dots { display: flex; align-items: center; gap: 2px; }
+  .cal-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .cal-dots i.published { background: var(--ok); }
+  .cal-dots i.failed, .cal-dots i.partial { background: var(--err); }
+  .cal-dots i.draft, .cal-dots i.cancelled { background: var(--text-3); }
+  .cal-dots i.pending_approval { background: var(--warn); }
+  .cal-dots b { font-size: 9px; color: var(--text-3); font-weight: 700; }
+  .cal-daylist { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .cal-daylist strong { text-transform: capitalize; }
+  .cal-daylist .cal-item { display: block; font-size: 13px; padding: 8px 10px; text-decoration: none; }
 }
 
 .media-grid-lg {
