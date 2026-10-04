@@ -1,15 +1,18 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { config } from "../core/config.js";
 import { AppError, notFound } from "../core/i18n.js";
 import { createLogger } from "../core/logger.js";
 import { adsRepo, type AdAccount, type AdLevel, type AdMetrics, type AdsProviderId } from "../core/repos/ads.js";
 import { channelsRepo } from "../core/repos/channels.js";
+import { mediaRepo } from "../core/repos/misc.js";
 import { orgsRepo } from "../core/repos/orgs.js";
 import { postsRepo } from "../core/repos/posts.js";
 import type { Ctx } from "../core/types.js";
 import { ProviderError } from "../providers/types.js";
 import { requireRole } from "./access.js";
-import { ADS_ADAPTERS, googleRecommendationAction, googleRecommendations, metaBoost, parseMetaRow, type CampaignState } from "./ads-providers.js";
+import { ADS_ADAPTERS, googleRecommendationAction, googleRecommendations, metaBoost, metaCreateAd, parseMetaRow, type CampaignState, type NewAdInput } from "./ads-providers.js";
 import { addDays, localYmd } from "./analytics-report.js";
 
 /**
@@ -209,6 +212,76 @@ export async function boostPost(ctx: Ctx, id: string, b: BoostRequest) {
   log.info("gönderi öne çıkarma oluşturuldu (duraklatılmış)", { account: acc.id, campaignId: r.campaignId, by: ctx.userId });
   const act = acc.externalId.replace(/^act_/, "");
   return { ...r, name, status: "paused" as const, manageUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${act}&selected_campaign_ids=${r.campaignId}` };
+}
+
+export interface CreateAdRequest {
+  objective: "traffic" | "awareness";
+  name?: string;
+  pageChannelId: string;
+  instagram: boolean;
+  facebook: boolean;
+  mediaId: string;
+  message: string;
+  headline: string;
+  description?: string;
+  link: string;
+  cta: NewAdInput["cta"];
+  dailyBudget: number;
+  days: number;
+  countries: string[];
+  ageMin: number;
+  ageMax: number;
+}
+
+/** Meta: sıfırdan bağlantı reklamı (görsel kütüphaneden). Her şey DURAKLATILMIŞ oluşturulur. */
+export async function createMetaAd(ctx: Ctx, id: string, b: CreateAdRequest) {
+  const acc = managed(ctx, id);
+  if (acc.provider !== "meta") throw new AppError(400, "ads.boost_meta_only");
+  const page = channelsRepo.get(ctx.orgId, b.pageChannelId);
+  if (!page || page.provider !== "facebook") throw new AppError(400, "ads.need_page");
+  // Instagram yerleşimi: Sayfaya bağlı IG işletme hesabı gerekir
+  const ig = b.instagram ? channelsRepo.list(ctx.orgId).find((c) => c.provider === "instagram" && (c.metadata.pageId as string | undefined) === page.externalId) : undefined;
+  if (b.instagram && !ig) throw new AppError(400, "ads.need_instagram");
+  const placements = [...(b.facebook ? (["facebook"] as const) : []), ...(b.instagram ? (["instagram"] as const) : [])];
+  if (!placements.length) throw new AppError(400, "ads.need_placement");
+  const media = mediaRepo.get(ctx.orgId, b.mediaId);
+  if (!media || media.kind !== "image") throw new AppError(400, "ads.need_image");
+  const bytes = await fs.promises.readFile(path.join(config.mediaDir, media.filename));
+  if (bytes.length > 30 * 1024 * 1024) throw new AppError(400, "ads.image_too_large");
+  const name = (b.name?.trim() || `${b.objective === "traffic" ? "Trafik" : "Bilinirlik"} · ${b.headline}`).slice(0, 120);
+  let r: Awaited<ReturnType<typeof metaCreateAd>>;
+  try {
+    r = await metaCreateAd(acc, await liveToken(acc), {
+      objective: b.objective,
+      name,
+      pageId: page.externalId,
+      igUserId: ig?.externalId ?? null,
+      placements: [...placements],
+      imageBase64: bytes.toString("base64"),
+      message: b.message,
+      headline: b.headline,
+      description: b.description ?? null,
+      link: b.link,
+      cta: b.cta,
+      dailyBudget: b.dailyBudget,
+      currency: acc.currency,
+      days: b.days,
+      countries: b.countries,
+      ageMin: b.ageMin,
+      ageMax: b.ageMax,
+    });
+  } catch (e) {
+    writeError(e);
+  }
+  const boosts = ((acc.extra.boosts as unknown[]) ?? []).slice(-49);
+  adsRepo.mergeExtra(acc.id, {
+    campaigns: { ...campaignsOf(acc), [r.campaignId]: { status: "paused", name } },
+    // Harcaması olmayan yeni kampanyanın listede görünmesi için öne çıkarmalarla aynı kayıt kullanılır
+    boosts: [...boosts, { campaignId: r.campaignId, name, kind: "ad", dailyBudget: b.dailyBudget, days: b.days, createdAt: new Date().toISOString(), by: ctx.userId }],
+  });
+  log.info("Meta reklamı oluşturuldu (duraklatılmış)", { account: acc.id, campaignId: r.campaignId, by: ctx.userId });
+  const act = acc.externalId.replace(/^act_/, "");
+  return { campaignId: r.campaignId, adId: r.adId, name, status: "paused" as const, manageUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${act}&selected_campaign_ids=${r.campaignId}` };
 }
 
 export async function listRecommendations(ctx: Ctx, id: string) {

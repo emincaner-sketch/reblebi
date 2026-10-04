@@ -92,7 +92,12 @@ Canlı kontrol (reblebi.com, yeni sürüm yayında): sağlık, yapılandırma, i
 | Studio: PDF / Yazdır ve zamanlı e-posta (haftalık/aylık, alıcılar, test e-postası, marka renk/logo) | Analitik > Studio | `services/dashboard-email.ts`, `api/routes/dashboards.ts`; migration 16 | `dashboards.test.ts` |
 | Anlık bildirim (Web Push, ek paket yok: VAPID + aes128gcm, RFC 8291 örnek vektörüyle doğrulandı); zil bildirimleri abone cihazlara; cihaz başına aç/kapat; iptal edilen abonelik silinir | Hesap menüsü | `services/webpush.ts`, `api/routes/push.ts`, `public/sw.js`, `lib/pwa.ts`; migration 17 | `webpush.test.ts` |
 
-Doğrulama: sunucu testleri 135/135 (dış istek yok), tip denetimi temiz, web derlemesi + ön-render tamam.
+| Meta'da sıfırdan reklam: hedef (trafik/bilinirlik), Sayfa, Facebook/Instagram yerleşimi, kütüphaneden görsel, metin/başlık/bağlantı/düğme, bütçe, süre, ülke, yaş; canlı önizleme; her şey duraklatılmış | Analitik > Reklamlar > Yeni reklam | `services/ads-providers.ts` (`metaCreateAd`), `services/ads.ts` (`createMetaAd`), `panel/ads/CreateAdDialog.tsx` | `ads-manage.test.ts` |
+| Platform onay başvuruları için hazır metinler (izin izin İngilizce açıklama + çekilecek video sahnesi) | — | `docs/BASVURULAR.md` | — |
+
+Yayın (2026-10-04 16:38): commit `397cc8a` (`panel-metricool` dalı) `railway up` ile canlıya alındı; migration 16–17 uygulandı; canlıda servis çalışanı aktif, `/offline.html` önbellekte.
+
+Doğrulama: sunucu testleri 136/136 (dış istek yok), tip denetimi temiz, web derlemesi + ön-render tamam.
 
 ## Canlıya alma: platform ayarları
 
@@ -179,7 +184,7 @@ Kod hazır; aşağıdakiler yapılmadan ilgili özellik canlıda veri getirmez (
 
 | İş | Büyüklük | Not |
 |---|---|---|
-| Sıfırdan reklam oluşturma (kreatif yükleme, hedef kitle kütüphanesi) | L | Bugün: duraklat/başlat, Meta gönderi öne çıkarma, Google önerileri |
+| Google Ads ve TikTok'ta sıfırdan reklam; Meta'da video reklam ve kayıtlı hedef kitle | L | Meta'da görselli bağlantı reklamı var |
 | TikTok ve X hesap insights ve rakipleri | M | TikTok Business/Research API onayı; X ücretli API |
 | Kick, Lemmy, Warpcast paylaşımı (gerçek API) | S–M | Şimdilik kapalı; Nostr imzalama kütüphanesi, Dribbble yükleme izni ister |
 | Canva entegrasyonu, Drive/Dropbox seçici penceresi | M | Bugün paylaşım bağlantısı yapıştırılıyor |

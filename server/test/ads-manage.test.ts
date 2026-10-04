@@ -18,6 +18,9 @@ const { channelsRepo } = await import("../src/core/repos/channels.js");
 const { postsRepo } = await import("../src/core/repos/posts.js");
 const { adsReport, boostPost, listRecommendations, recommendationAction, setCampaignStatus, syncAdAccount } = await import("../src/services/ads.js");
 const { minorUnits } = await import("../src/services/ads-providers.js");
+const { createMetaAd } = await import("../src/services/ads.js");
+const { mediaRepo } = await import("../src/core/repos/misc.js");
+const { config } = await import("../src/core/config.js");
 import type { Ctx } from "../src/core/types.js";
 
 const user = usersRepo.create({ email: "reklamyonet@ornek.com", password: "Password123!", name: "R", locale: "tr" });
@@ -55,6 +58,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (p === "/act_9/campaigns" && method === "GET") return j({ data: [{ id: "c1", name: "Yaz", status: "ACTIVE" }, { id: "c2", name: "Eski", status: "ARCHIVED" }] });
     if (p === "/act_9/campaigns" && method === "POST") return j({ id: "newc" });
     if (p === "/act_9/adsets") return j({ id: "news" });
+    if (p === "/act_9/adimages") return j({ images: { "gorsel.jpg": { hash: "imghash1" } } });
     if (p === "/act_9/adcreatives") return j({ id: "newcr" });
     if (p === "/act_9/ads") return failAd ? j({ error: { message: "Invalid parameter", code: 100 } }, 400) : j({ id: "newad" });
     if (p === "/c1" && method === "POST") return new URLSearchParams(body).get("access_token") === "m-tok" ? j({ success: true }) : j({}, 401);
@@ -169,4 +173,44 @@ test("Google Ads önerileri: yoksayılanlar gizlenir, kampanya adı eşlenir; uy
   assert.deepEqual(JSON.parse(ap.body), { operations: [{ resourceName: "customers/333/recommendations/r1" }] });
   await assert.rejects(() => recommendationAction(ctx, gads.id, "customers/444/recommendations/x", "dismiss"), /reddetti/);
   await assert.rejects(() => listRecommendations(ctx, meta.id), /yalnızca Google/);
+});
+
+test("Meta sıfırdan reklam: görsel yüklenir, trafik hedefi, IG yerleşimi Sayfaya bağlı hesapla, her şey duraklatılmış", async () => {
+  fs.mkdirSync(config.mediaDir, { recursive: true });
+  fs.writeFileSync(path.join(config.mediaDir, "gorsel.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]));
+  const img = mediaRepo.create({ id: "med_ad", orgId: org.id, filename: "gorsel.jpg", originalName: "gorsel.jpg", mime: "image/jpeg", size: 7, kind: "image" });
+  const vid = mediaRepo.create({ id: "med_vid", orgId: org.id, filename: "v.mp4", originalName: "v.mp4", mime: "video/mp4", size: 7, kind: "video" });
+  const base = { objective: "traffic" as const, pageChannelId: fb.id, facebook: true, instagram: true, mediaId: img.id, message: "Yeni sezon fındık geldi", headline: "Taze fındık", link: "https://ornek.com/findik", cta: "SHOP_NOW" as const, dailyBudget: 200, days: 5, countries: ["TR"], ageMin: 25, ageMax: 54 };
+  const r = await createMetaAd(ctx, meta.id, base);
+  assert.equal(r.status, "paused");
+  assert.equal(r.name, "Trafik · Taze fındık");
+  const form = (suffix: string) => new URLSearchParams(calls.filter((c) => c.method === "POST" && c.url.pathname.endsWith(suffix)).at(-1)!.body);
+  assert.equal(form("/act_9/adimages").get("bytes"), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString("base64"));
+  assert.equal(form("/act_9/campaigns").get("objective"), "OUTCOME_TRAFFIC");
+  assert.equal(form("/act_9/campaigns").get("status"), "PAUSED");
+  const adset = form("/act_9/adsets");
+  assert.equal(adset.get("optimization_goal"), "LINK_CLICKS");
+  assert.equal(adset.get("destination_type"), "WEBSITE");
+  assert.equal(adset.get("daily_budget"), "20000");
+  assert.equal(adset.get("status"), "PAUSED");
+  assert.deepEqual(JSON.parse(adset.get("targeting")!).publisher_platforms, ["facebook", "instagram"]);
+  const spec = JSON.parse(form("/act_9/adcreatives").get("object_story_spec")!);
+  assert.equal(spec.page_id, "pg1");
+  assert.equal(spec.instagram_user_id, "ig1");
+  assert.deepEqual(spec.link_data.call_to_action, { type: "SHOP_NOW", value: { link: "https://ornek.com/findik" } });
+  assert.equal(spec.link_data.image_hash, "imghash1");
+  assert.equal(form("/act_9/ads").get("status"), "PAUSED");
+  const rep = adsReport(ctx, { accountId: meta.id, days: 7 });
+  assert.equal(rep.campaigns.find((c) => c.id === "newc")?.status, "paused", "harcamasız yeni kampanya listede");
+
+  const aw = await createMetaAd(ctx, meta.id, { ...base, objective: "awareness", instagram: false });
+  assert.ok(aw.campaignId);
+  assert.equal(form("/act_9/adsets").get("optimization_goal"), "REACH");
+  assert.equal(form("/act_9/adsets").get("destination_type"), null);
+  assert.equal(JSON.parse(form("/act_9/adcreatives").get("object_story_spec")!).instagram_user_id, undefined);
+
+  await assert.rejects(() => createMetaAd(ctx, meta.id, { ...base, mediaId: vid.id }), /görsel seç/);
+  await assert.rejects(() => createMetaAd(ctx, meta.id, { ...base, pageChannelId: x.id }), /Facebook Sayfası seç/);
+  await assert.rejects(() => createMetaAd(ctx, meta.id, { ...base, facebook: false, instagram: false }), /yerleşim/);
+  await assert.rejects(() => createMetaAd({ ...ctx, role: "editor" }, meta.id, base), /yetki/);
 });

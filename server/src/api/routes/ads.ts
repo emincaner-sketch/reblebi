@@ -3,7 +3,8 @@ import { z } from "zod";
 import { AppError, notFound } from "../../core/i18n.js";
 import { adsRepo } from "../../core/repos/ads.js";
 import { requireRole } from "../../services/access.js";
-import { adsConnectUrl, adsReport, boostPost, finishAdsConnect, isAdsProvider, listRecommendations, recommendationAction, setCampaignStatus, syncNow } from "../../services/ads.js";
+import { META_CTAS } from "../../services/ads-providers.js";
+import { adsConnectUrl, adsReport, boostPost, createMetaAd, finishAdsConnect, isAdsProvider, listRecommendations, recommendationAction, setCampaignStatus, syncNow } from "../../services/ads.js";
 import { ctxOf, requireCtx } from "../context.js";
 
 const Id = z.object({ id: z.string() });
@@ -70,6 +71,32 @@ export async function adsRoutes(app: FastifyInstance): Promise<void> {
       .refine((b) => b.ageMin <= b.ageMax, { message: "ageMin <= ageMax", path: ["ageMax"] })
       .parse(req.body);
     return boostPost(ctxOf(req), Id.parse(req.params).id, body);
+  });
+
+  /** Meta: sıfırdan bağlantı reklamı (kütüphaneden görsel) — her şey DURAKLATILMIŞ oluşturulur */
+  app.post("/api/ads/:id/create", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req) => {
+    const body = z
+      .object({
+        objective: z.enum(["traffic", "awareness"]),
+        name: z.string().max(120).optional(),
+        pageChannelId: z.string().max(64),
+        facebook: z.boolean().default(true),
+        instagram: z.boolean().default(false),
+        mediaId: z.string().max(64),
+        message: z.string().trim().min(1).max(2000),
+        headline: z.string().trim().min(1).max(100),
+        description: z.string().max(200).optional(),
+        link: z.string().url().max(1000).refine((u) => /^https:\/\//i.test(u), "https"),
+        cta: z.enum(META_CTAS),
+        dailyBudget: z.number().positive().max(1_000_000),
+        days: z.number().int().min(1).max(90),
+        countries: z.array(z.string().regex(/^[A-Z]{2}$/)).min(1).max(25),
+        ageMin: z.number().int().min(18).max(65).default(18),
+        ageMax: z.number().int().min(18).max(65).default(65),
+      })
+      .refine((b) => b.ageMin <= b.ageMax, { message: "ageMin <= ageMax", path: ["ageMax"] })
+      .parse(req.body);
+    return createMetaAd(ctxOf(req), Id.parse(req.params).id, body);
   });
 
   /** Google Ads önerileri */

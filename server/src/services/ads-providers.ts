@@ -248,6 +248,89 @@ export async function metaBoost(acc: AdAccount, token: string, b: BoostInput, no
   }
 }
 
+export const META_CTAS = ["LEARN_MORE", "SHOP_NOW", "ORDER_NOW", "SIGN_UP", "CONTACT_US", "BOOK_TRAVEL", "GET_OFFER", "SUBSCRIBE", "DOWNLOAD", "APPLY_NOW", "WHATSAPP_MESSAGE"] as const;
+
+export interface NewAdInput {
+  objective: "traffic" | "awareness";
+  name: string;
+  pageId: string;
+  /** Instagram'da da göstermek için Sayfaya bağlı IG hesabı */
+  igUserId?: string | null;
+  placements: Array<"facebook" | "instagram">;
+  /** Reklam görseli (base64, en fazla 30 MB) */
+  imageBase64: string;
+  message: string;
+  headline: string;
+  description?: string | null;
+  link: string;
+  cta: (typeof META_CTAS)[number];
+  dailyBudget: number;
+  currency: string | null;
+  days: number;
+  countries: string[];
+  ageMin: number;
+  ageMax: number;
+}
+
+/**
+ * Meta: sıfırdan bağlantı reklamı (görsel + metin + bağlantı + düğme). Görsel reklam hesabına yüklenir,
+ * kampanya → reklam seti → kreatif → reklam DURAKLATILMIŞ oluşturulur. Ara adım hata verirse kampanya silinir.
+ */
+export async function metaCreateAd(acc: AdAccount, token: string, a: NewAdInput, now = Date.now()): Promise<{ campaignId: string; adsetId: string; creativeId: string; adId: string; imageHash: string }> {
+  const act = acc.externalId;
+  const img = await graph<{ images?: Record<string, { hash?: string }> }>(`/${act}/adimages`, token, { method: "POST", params: { bytes: a.imageBase64 } });
+  const imageHash = Object.values(img.images ?? {})[0]?.hash;
+  if (!imageHash) throw new ProviderError("Görsel reklam hesabına yüklenemedi", 400);
+  const traffic = a.objective === "traffic";
+  const camp = await graph<{ id: string }>(`/${act}/campaigns`, token, {
+    method: "POST",
+    params: { name: a.name, objective: traffic ? "OUTCOME_TRAFFIC" : "OUTCOME_AWARENESS", status: "PAUSED", special_ad_categories: [], is_adset_budget_sharing_enabled: false },
+  });
+  try {
+    const start = new Date(now + 10 * 60_000);
+    const end = new Date(start.getTime() + a.days * 86_400_000);
+    const adset = await graph<{ id: string }>(`/${act}/adsets`, token, {
+      method: "POST",
+      params: {
+        name: `${a.name} · reklam seti`,
+        campaign_id: camp.id,
+        daily_budget: Math.round(a.dailyBudget * minorUnits(a.currency)),
+        billing_event: "IMPRESSIONS",
+        optimization_goal: traffic ? "LINK_CLICKS" : "REACH",
+        ...(traffic ? { destination_type: "WEBSITE" } : {}),
+        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        targeting: { geo_locations: { countries: a.countries }, age_min: a.ageMin, age_max: a.ageMax, publisher_platforms: a.placements },
+        status: "PAUSED",
+      },
+    });
+    const creative = await graph<{ id: string }>(`/${act}/adcreatives`, token, {
+      method: "POST",
+      params: {
+        name: `${a.name} · kreatif`,
+        object_story_spec: {
+          page_id: a.pageId,
+          ...(a.igUserId && a.placements.includes("instagram") ? { instagram_user_id: a.igUserId } : {}),
+          link_data: {
+            link: a.link,
+            message: a.message,
+            name: a.headline,
+            ...(a.description ? { description: a.description } : {}),
+            image_hash: imageHash,
+            call_to_action: { type: a.cta, value: { link: a.link } },
+          },
+        },
+      },
+    });
+    const ad = await graph<{ id: string }>(`/${act}/ads`, token, { method: "POST", params: { name: a.name, adset_id: adset.id, creative: { creative_id: creative.id }, status: "PAUSED" } });
+    return { campaignId: camp.id, adsetId: adset.id, creativeId: creative.id, adId: ad.id, imageHash };
+  } catch (e) {
+    await graph(`/${camp.id}`, token, { method: "DELETE" }).catch(() => undefined);
+    throw e;
+  }
+}
+
 /* ======================================================================
    Google Ads API (REST, GAQL) · salt okunur
    ====================================================================== */

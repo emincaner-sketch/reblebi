@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Megaphone, Plug, RefreshCw, Rocket } from "lucide-react";
+import { AlertTriangle, Megaphone, Plug, Plus, RefreshCw, Rocket } from "lucide-react";
 import { api, errMsg } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
@@ -15,6 +15,7 @@ import { StatTile } from "../panel/charts/StatTile";
 import { TimeChart } from "../panel/charts/TimeChart";
 import "../panel/charts/charts.css";
 import { BoostDialog, CampaignStatusCell, Recommendations, type CampaignStatus } from "../panel/ads/AdsManage";
+import { CreateAdDialog } from "../panel/ads/CreateAdDialog";
 import "../panel/analytics/competitors.css";
 
 type Num = number | null;
@@ -106,6 +107,7 @@ export default function AdsPage() {
   const [accountId, setAccountId] = useLocalState<string>("sp_ads_account", "");
   const [tab, setTab] = useLocalState<"campaigns" | "groups" | "ads" | "keywords" | "recs">("sp_ads_tab", "campaigns");
   const [boosting, setBoosting] = useState(false);
+  const [creatingAd, setCreatingAd] = useState(false);
   const q = useQuery({
     queryKey: ["ads", days, accountId],
     queryFn: () => api.get<AdsReport>(`/api/ads/report?${new URLSearchParams({ days: String(days), ...(accountId ? { accountId } : {}) })}`),
@@ -400,9 +402,14 @@ export default function AdsPage() {
               </span>
             )}
             {isAdmin && acc?.provider === "meta" && (
-              <button className="btn btn-sm btn-primary" onClick={() => setBoosting(true)}>
-                <Rocket aria-hidden="true" /> {t("Gönderiyi öne çıkar")}
-              </button>
+              <>
+                <button className="btn btn-sm" onClick={() => setCreatingAd(true)}>
+                  <Plus aria-hidden="true" /> {t("Yeni reklam")}
+                </button>
+                <button className="btn btn-sm btn-primary" onClick={() => setBoosting(true)}>
+                  <Rocket aria-hidden="true" /> {t("Gönderiyi öne çıkar")}
+                </button>
+              </>
             )}
             {isAdmin && (
               <details className="ads-add">
@@ -517,6 +524,7 @@ export default function AdsPage() {
             {t("Veriler platformların reklam API'lerinden 6 saatte bir çekilir; son iki günün rakamları platform tarafından kesinleşene kadar değişebilir.")}
           </p>
           {boosting && acc && <BoostDialog accountId={acc.id} currency={cur} onClose={() => setBoosting(false)} />}
+          {creatingAd && acc && <CreateAdDialog accountId={acc.id} currency={cur} onClose={() => setCreatingAd(false)} />}
         </div>
       )}
     </div>
