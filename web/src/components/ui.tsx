@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Lock, X } from "lucide-react";
 import { PROVIDER_COLOR, PROVIDER_NAME, PROVIDER_SHORT, type Channel, type PlanFeature, type PostStatus, type ProviderId, type Quota, type Role } from "../lib/api";
-import { useLabels, useT } from "../lib/i18n";
+import { useI18n, useLabels, useT } from "../lib/i18n";
 import { useOptionalSession } from "../lib/session";
 import { SITE_NAME } from "../config/site";
 import { BrandSvg } from "./BrandIcons";
@@ -68,10 +68,17 @@ export function Modal({ title, onClose, children, footer, large }: { title: Reac
 /* ---------------- Sayfa iskeleti ---------------- */
 
 export function PageHead({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
-  // Panel sekme başlığı sayfanın adı olur (ör. "Studio · Reblebi")
+  // Panel sekme başlığı sayfanın adı olur (ör. "Studio · Reblebi"). Üst rota aynı turda genel başlığı yazar
+  // (efektler önce çocukta çalışır); mikro görevle ondan sonra yazılır.
+  // Adres ya da dil değişince üst rota yine yazar; aynı başlıkla da yeniden uygula
+  const { pathname } = useLocation();
+  const { locale } = useI18n();
   useEffect(() => {
-    if (typeof title === "string") document.title = `${title} · ${SITE_NAME}`;
-  }, [title]);
+    if (typeof title !== "string") return;
+    queueMicrotask(() => {
+      document.title = `${title} · ${SITE_NAME}`;
+    });
+  }, [title, pathname, locale]);
   return (
     <div className="page-head">
       <div>

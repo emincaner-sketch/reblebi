@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, CalendarDays, CheckCircle2, Eye, EyeOff, MailCheck, MessagesSquare, XCircle } from "lucide-react";
 import "../../panel/auth.css";
@@ -48,10 +48,14 @@ export function AuthLayout({ title, sub, children, footer, variant = "default" }
   const cfg = usePublicConfig();
   const c = cfg.data;
   const appName = c?.appName ?? SITE_NAME;
-  // Sekme başlığı: sayfanın adı (ör. "Panele giriş | Reblebi")
+  // Sekme başlığı: sayfanın adı (ör. "Panele giriş | Reblebi"). Üst rota aynı turda genel başlığı yazar
+  // (efektler önce çocukta çalışır); mikro görevle ondan sonra yazılır.
+  const { pathname } = useLocation();
   useEffect(() => {
-    document.title = `${title} | ${appName}`;
-  }, [title, appName]);
+    queueMicrotask(() => {
+      document.title = `${title} | ${appName}`;
+    });
+  }, [title, appName, pathname, locale]);
   const trialPlan = c ? (c.plans.find((p) => p.id === c.trialPlan)?.name[locale] ?? c.trialPlan) : "";
   const note =
     variant === "signup" && c && c.trialDays > 0
