@@ -69,7 +69,7 @@ function guides(): PlatformGuide[] {
       scopes: "user.info.basic user.info.profile user.info.stats video.publish video.upload video.list",
       steps: [
         "developers.tiktok.com'da bir uygulama oluştur; ürünlerden \"Login Kit\" ve \"Content Posting API\" ekle.",
-        "Redirect URI olarak aşağıdaki adresi ekle; Terms of Service ve Privacy Policy adreslerini gir (aşağıdaki bağlantılar).",
+        "Redirect URI olarak aşağıdaki adresi ekle (https olmalı, localhost kabul edilmez). Terms of Service ve Privacy Policy olarak reblebi.com/terms ve reblebi.com/privacy adreslerini gir; Manage URL properties bölümünden reblebi.com alan adını doğrula (fotoğraf gönderileri için gerekli).",
         "Scopes bölümünden listedeki izinleri iste (video.publish için Direct Post izni gerekir).",
         "Uygulamanın Client key ve Client secret değerlerini aşağı yapıştır.",
         "Sandbox'ta yalnızca ekli test hesapları bağlanır. Herkese açık yayın için \"Submit for review\" ile demo videosu yükleyip onay al.",

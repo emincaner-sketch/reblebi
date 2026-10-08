@@ -17,9 +17,53 @@ interface TikTokResp<T> {
   error?: { code?: string; message?: string; log_id?: string };
 }
 
+/** TikTok hata kodlarının anlaşılır karşılıkları (kod her zaman mesajın başında kalır) */
+const ERROR_HINTS: Record<string, string> = {
+  unaudited_client_can_only_post_to_private_accounts: "Uygulama TikTok denetiminden geçmedi: yalnızca 'Sadece ben' gizliliğiyle paylaşılabilir. TikTok for Developers'ta uygulamayı denetime gönder.",
+  url_ownership_unverified: "Fotoğraf için TikTok'ta alan adı doğrulanmamış: TikTok for Developers > Manage URL properties bölümünden PUBLIC_URL adresini (URL öneki olarak) doğrula.",
+  spam_risk_too_many_posts: "TikTok günlük paylaşım sınırına ulaşıldı; yarın tekrar denenecek.",
+  spam_risk_user_banned_from_posting: "TikTok bu hesabın paylaşım yapmasını kısıtlamış.",
+  access_token_invalid: "TikTok bağlantısı geçersiz; kanalı yeniden bağla.",
+  scope_not_authorized: "Bu işlem için gereken TikTok izni verilmemiş; kanalı yeniden bağlayıp tüm izinleri onayla.",
+  reached_active_user_cap: "TikTok uygulamasının sandbox kullanıcı sınırı doldu; uygulamayı denetime gönder ya da test kullanıcısı ekle.",
+  duration_check_failed: "Video süresi bu hesabın TikTok sınırını aşıyor.",
+};
+
 function check<T>(r: TikTokResp<T>): T {
-  if (r.error && r.error.code && r.error.code !== "ok") throw new ProviderError(`TikTok: ${r.error.code} ${r.error.message ?? ""}`.trim(), undefined, r.error);
+  if (r.error && r.error.code && r.error.code !== "ok") {
+    const hint = ERROR_HINTS[r.error.code];
+    throw new ProviderError(`TikTok: ${r.error.code} ${hint ?? r.error.message ?? ""}`.trim(), undefined, r.error);
+  }
   return r.data;
+}
+
+interface CreatorInfo {
+  privacy_level_options?: string[];
+}
+
+/** Yayından önce zorunlu sorgu: hesabın izin verdiği gizlilik seçenekleri ve en uzun video süresi (alınamazsa null) */
+async function creatorInfo(token: string): Promise<CreatorInfo | null> {
+  try {
+    return check(await http<TikTokResp<CreatorInfo>>(`${API}/post/publish/creator_info/query/`, { method: "POST", headers: bearer(token), json: {}, retries: 0 }));
+  } catch {
+    return null;
+  }
+}
+
+/** İstenen gizlilik hesapta kapalıysa izin verilen en kısıtlıya (yoksa ilk seçeneğe) düşer */
+export function resolvePrivacy(requested: string, options: string[] | undefined): string {
+  if (!options?.length || options.includes(requested)) return requested;
+  return options.includes("SELF_ONLY") ? "SELF_ONLY" : options[0];
+}
+
+/** Denetimden geçmemiş uygulama herkese açık yayın yapamaz: bir kez 'Sadece ben' ile yeniden dener */
+async function initWithAuditFallback<T>(privacy: string, init: (privacy: string) => Promise<TikTokResp<T>>): Promise<{ data: T; privacy: string }> {
+  try {
+    return { data: check(await init(privacy)), privacy };
+  } catch (e) {
+    if (privacy !== "SELF_ONLY" && e instanceof Error && /unaudited_client/.test(e.message)) return { data: check(await init("SELF_ONLY")), privacy: "SELF_ONLY" };
+    throw e;
+  }
 }
 
 async function waitPublish(token: string, publishId: string): Promise<string | null> {
@@ -138,9 +182,11 @@ export const tiktokProvider: Provider = {
     const token = channel.accessToken;
     const video = input.media.find((m) => m.kind === "video");
     const images = input.media.filter((m) => m.kind === "image");
+    const info = await creatorInfo(token);
+    const privacy = resolvePrivacy((input.settings.privacyLevel as string) || "PUBLIC_TO_EVERYONE", info?.privacy_level_options);
     const postInfo = {
       title: input.text.slice(0, 2200),
-      privacy_level: (input.settings.privacyLevel as string) || "PUBLIC_TO_EVERYONE",
+      privacy_level: privacy,
       disable_comment: Boolean(input.settings.disableComment),
       disable_duet: Boolean(input.settings.disableDuet),
       disable_stitch: Boolean(input.settings.disableStitch),
@@ -155,12 +201,14 @@ export const tiktokProvider: Provider = {
       const single = size < MIN_CHUNK * 2;
       const chunkSize = single ? size : CHUNK;
       const count = single ? 1 : Math.floor(size / CHUNK);
-      const init = await http<TikTokResp<{ publish_id: string; upload_url: string }>>(`${API}/post/publish/video/init/`, {
-        method: "POST",
-        headers: bearer(token),
-        json: { post_info: { ...postInfo, video_cover_timestamp_ms: 1000 }, source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: chunkSize, total_chunk_count: count } },
-      });
-      const { publish_id, upload_url } = check(init);
+      const { data: init } = await initWithAuditFallback(postInfo.privacy_level, (pl) =>
+        http<TikTokResp<{ publish_id: string; upload_url: string }>>(`${API}/post/publish/video/init/`, {
+          method: "POST",
+          headers: bearer(token),
+          json: { post_info: { ...postInfo, privacy_level: pl, video_cover_timestamp_ms: 1000 }, source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: chunkSize, total_chunk_count: count } },
+        }),
+      );
+      const { publish_id, upload_url } = init;
       for (let i = 0; i < count; i++) {
         const start = i * chunkSize;
         const end = i === count - 1 ? size - 1 : start + chunkSize - 1;
@@ -177,17 +225,19 @@ export const tiktokProvider: Provider = {
     }
 
     if (images.length) {
-      const init = await http<TikTokResp<{ publish_id: string }>>(`${API}/post/publish/content/init/`, {
-        method: "POST",
-        headers: bearer(token),
-        json: {
-          post_info: { title: input.text.slice(0, 90), description: input.text.slice(0, 4000), privacy_level: postInfo.privacy_level, disable_comment: postInfo.disable_comment, auto_add_music: true },
-          source_info: { source: "PULL_FROM_URL", photo_cover_index: 0, photo_images: images.slice(0, 35).map((m) => m.publicUrl) },
-          post_mode: "DIRECT_POST",
-          media_type: "PHOTO",
-        },
-      });
-      const { publish_id } = check(init);
+      const { data: init } = await initWithAuditFallback(postInfo.privacy_level, (pl) =>
+        http<TikTokResp<{ publish_id: string }>>(`${API}/post/publish/content/init/`, {
+          method: "POST",
+          headers: bearer(token),
+          json: {
+            post_info: { title: input.text.slice(0, 90), description: input.text.slice(0, 4000), privacy_level: pl, disable_comment: postInfo.disable_comment, auto_add_music: true },
+            source_info: { source: "PULL_FROM_URL", photo_cover_index: 0, photo_images: images.slice(0, 35).map((m) => m.publicUrl) },
+            post_mode: "DIRECT_POST",
+            media_type: "PHOTO",
+          },
+        }),
+      );
+      const { publish_id } = init;
       const postId = await waitPublish(token, publish_id);
       return { externalId: postId ?? publish_id, url: null };
     }
