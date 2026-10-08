@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { disablePush, enablePush, pushState, useInstallPrompt, type PushState } from "../lib/pwa";
 import {
+  AtSign,
   BarChart3,
   BookMarked,
   Bell,
@@ -321,6 +322,7 @@ function useSidebar(section: Section, d: Dashboard | undefined): Array<{ title?:
     const onTags = loc.pathname.startsWith("/app/analytics/hashtags");
     const onStudio = loc.pathname.startsWith("/app/analytics/studio");
     const onSite = loc.pathname.startsWith("/app/analytics/website");
+    const onMentions = loc.pathname.startsWith("/app/analytics/mentions");
     // Ağ bağlantıları bulunulan sayfada kalır: raporda ağ seçmek raporu süzer
     const keep = (network: string | null, base = onReport ? "/app/analytics/report" : "/app/analytics") => {
       // Rakipler sayfasında ağ seçimi analitiğe döner
@@ -334,18 +336,19 @@ function useSidebar(section: Section, d: Dashboard | undefined): Array<{ title?:
     return [
       {
         items: [
-          { to: keep(null, "/app/analytics"), label: t("Özet"), icon: <LayoutDashboard />, active: !current && !onReport && !onCompetitors && !onAds && !onTags && !onStudio && !onSite },
+          { to: keep(null, "/app/analytics"), label: t("Özet"), icon: <LayoutDashboard />, active: !current && !onReport && !onCompetitors && !onAds && !onTags && !onStudio && !onSite && !onMentions },
           { to: keep(current, "/app/analytics/report"), label: t("Rapor"), icon: <FileText />, active: onReport },
           { to: "/app/analytics/studio", label: t("Studio"), icon: <LayoutGrid />, active: onStudio },
           { to: "/app/analytics/competitors", label: t("Rakipler"), icon: <Users />, active: onCompetitors },
           { to: "/app/analytics/hashtags", label: t("Hashtag takibi"), icon: <Hash />, active: onTags },
+          { to: "/app/analytics/mentions", label: t("Bahsetmeler"), icon: <AtSign />, active: onMentions },
           { to: "/app/analytics/ads", label: t("Reklamlar"), icon: <Megaphone />, active: onAds },
           { to: "/app/analytics/website", label: t("Web sitesi"), icon: <Globe2 />, active: onSite },
         ],
       },
       {
         title: t("Ağlar"),
-        items: providers.map((p) => ({ to: keep(p), label: PROVIDER_NAME[p], icon: <ProviderIcon provider={p} size={20} />, active: current === p && !onCompetitors && !onAds && !onTags && !onStudio && !onSite })),
+        items: providers.map((p) => ({ to: keep(p), label: PROVIDER_NAME[p], icon: <ProviderIcon provider={p} size={20} />, active: current === p && !onCompetitors && !onAds && !onTags && !onStudio && !onSite && !onMentions })),
         action: (
           <Link to="/app/channels" className="pn-side-add">
             <Plus aria-hidden="true" /> {t("Kanal bağla")}

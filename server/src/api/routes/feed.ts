@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError, notFound } from "../../core/i18n.js";
 import { channelsRepo } from "../../core/repos/channels.js";
 import { instagramRecentMedia } from "../../providers/meta/instagram.js";
+import { channelBase } from "../../providers/meta/common.js";
 import { ensureFreshToken } from "../../services/publisher.js";
 import { ctxOf, requireCtx } from "../context.js";
 
@@ -18,7 +19,7 @@ export async function feedRoutes(app: FastifyInstance): Promise<void> {
     if (ch.provider !== "instagram") throw new AppError(400, "feed.unsupported");
     try {
       const fresh = await ensureFreshToken(ch);
-      return { items: await instagramRecentMedia(fresh.externalId, fresh.accessToken, 30), live: true };
+      return { items: await instagramRecentMedia(fresh.externalId, fresh.accessToken, 30, channelBase(fresh)), live: true };
     } catch (e) {
       // Jeton/izin sorunu: panel yalnızca kendi yayınladığı gönderilerle devam eder
       return { items: [], live: false, error: e instanceof Error ? e.message.slice(0, 200) : String(e) };

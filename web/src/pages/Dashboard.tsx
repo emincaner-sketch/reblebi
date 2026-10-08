@@ -28,6 +28,23 @@ function PostRow({ p, chMap, when }: { p: Post; chMap: Map<string, Channel>; whe
   );
 }
 
+/** Sunucu günlüğündeki teknik kayıtları okunur hale getirir (bilinmeyenler olduğu gibi kalır) */
+function activityText(msg: string, t: (k: string, v?: Record<string, string | number>) => string): string {
+  if (msg === "deleted") return t("Gönderi silindi (30 gün içinde geri alınabilir)");
+  if (msg === "restored") return t("Gönderi geri yüklendi");
+  const bulk = /^bulk: (\d+)\/(\d+)/.exec(msg);
+  if (bulk) return t("Toplu yükleme: {ok}/{total} gönderi oluşturuldu", { ok: bulk[1], total: bulk[2] });
+  if (msg.startsWith("publish now")) return t("Gönderi hemen yayınlandı");
+  const st = /^(post|story|reel|video|thread) · (draft|scheduled|published|failed)/.exec(msg);
+  if (st) return t("Gönderi oluşturuldu: {status}", { status: t(st[2] === "draft" ? "taslak" : st[2] === "scheduled" ? "planlandı" : st[2] === "published" ? "yayınlandı" : "başarısız") });
+  return msg;
+}
+
+function activitySource(src: string, t: (k: string) => string): string {
+  const m: Record<string, string> = { post: "Gönderi", publish: "Yayın", channel: "Kanal", token: "Jeton", admin: "Yönetim", dm: "Mesaj", sync: "Senkron" };
+  return m[src] ? t(m[src]) : src;
+}
+
 export default function DashboardPage() {
   const { t } = useI18n();
   const L = useLabels();
@@ -259,9 +276,9 @@ export default function DashboardPage() {
                   <div key={a.id} className="activity-item">
                     <span className="dot" style={{ color: a.level === "error" ? "var(--err)" : a.level === "warn" ? "var(--warn)" : "var(--ok)" }} />
                     <div>
-                      <div>{a.message}</div>
+                      <div>{activityText(a.message, t)}</div>
                       <div className="when">
-                        {a.source} · {f.ago(a.createdAt)}
+                        {activitySource(a.source, t)} · {f.ago(a.createdAt)}
                       </div>
                     </div>
                   </div>

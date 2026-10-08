@@ -23,6 +23,7 @@ import { hashtagsRepo } from "../src/core/repos/hashtags.js";
 import { dashboardsRepo } from "../src/core/repos/dashboards.js";
 import { autolistsRepo } from "../src/core/repos/autolists.js";
 import { overviewTemplate } from "../src/api/routes/dashboards.js";
+import { ensureDemoMentions } from "./demo-mentions.js";
 import type { PostKind, ProviderId } from "../src/core/types.js";
 
 export const DEMO_EMAIL = "demo@reblebi.local";
@@ -106,6 +107,7 @@ export function seedDemo(): { created: boolean } {
       ensureDemoAdStatuses(m.id);
       ensureDemoAutolists(m.id);
       ensureDemoWebsite(m.id);
+      ensureDemoMentions(m.id);
     }
     return { created: false };
   }
@@ -196,6 +198,7 @@ export function seedDemo(): { created: boolean } {
   ensureDemoAdStatuses(org.id);
   ensureDemoAutolists(org.id);
   ensureDemoWebsite(org.id);
+  ensureDemoMentions(org.id);
   return { created: true };
 }
 

@@ -544,6 +544,54 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
     `,
   },
+  {
+    // Bahsetme izleme (sosyal dinleme): marka/anahtar kelime sorguları ve haber, Reddit, Bluesky, YouTube, web bahsetmeleri
+    id: 18,
+    sql: `
+    CREATE TABLE IF NOT EXISTS listen_queries (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      terms TEXT NOT NULL DEFAULT '[]',
+      excludes TEXT NOT NULL DEFAULT '[]',
+      sources TEXT NOT NULL DEFAULT '[]',
+      lang TEXT NOT NULL DEFAULT 'tr',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      notify INTEGER NOT NULL DEFAULT 1,
+      ai_sentiment INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT '{}',
+      last_run_at TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_listen_org ON listen_queries(org_id);
+    CREATE TABLE IF NOT EXISTS mentions (
+      id TEXT PRIMARY KEY,
+      query_id TEXT NOT NULL REFERENCES listen_queries(id) ON DELETE CASCADE,
+      org_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      title TEXT,
+      snippet TEXT,
+      author TEXT,
+      site TEXT,
+      lang TEXT,
+      published_at TEXT NOT NULL,
+      found_at TEXT NOT NULL,
+      sentiment TEXT NOT NULL DEFAULT 'neutral',
+      sentiment_by TEXT NOT NULL DEFAULT 'lexicon',
+      reach INTEGER,
+      engagement INTEGER,
+      status TEXT NOT NULL DEFAULT 'new',
+      starred INTEGER NOT NULL DEFAULT 0,
+      UNIQUE (query_id, source, external_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mentions_org ON mentions(org_id, published_at);
+    CREATE INDEX IF NOT EXISTS idx_mentions_query ON mentions(query_id, published_at);
+    `,
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

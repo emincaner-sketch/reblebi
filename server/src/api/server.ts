@@ -15,6 +15,7 @@ import { ProviderError } from "../providers/index.js";
 import { MAX_UPLOAD_BYTES } from "../services/media.js";
 import { allowedOrigins, csrfGuard, resolveRequest } from "./context.js";
 import { adminRoutes } from "./routes/admin.js";
+import { applyStoredKeys } from "../services/platform-keys.js";
 import { authRoutes } from "./routes/auth.js";
 import { campaignRoutes } from "./routes/campaigns.js";
 import { channelRoutes, oauthCallbackRoutes } from "./routes/channels.js";
@@ -37,6 +38,7 @@ import { websitePublicRoutes, websiteRoutes } from "./routes/website.js";
 import { feedRoutes } from "./routes/feed.js";
 import { pushRoutes } from "./routes/push.js";
 import { hashtagRoutes } from "./routes/hashtags.js";
+import { listeningRoutes } from "./routes/listening.js";
 import { exportRoutes } from "./routes/export.js";
 
 const log = createLogger("http");
@@ -95,6 +97,7 @@ function isPublicCorsPath(url: string): boolean {
 }
 
 export async function buildServer(): Promise<FastifyInstance> {
+  applyStoredKeys();
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024, trustProxy: true });
 
   // JSON gövdeyi ham haliyle de sakla (Meta webhook imzası için)
@@ -213,6 +216,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(feedRoutes);
   await app.register(pushRoutes);
   await app.register(hashtagRoutes);
+  await app.register(listeningRoutes);
   await app.register(exportRoutes);
   await app.register(adminRoutes);
 

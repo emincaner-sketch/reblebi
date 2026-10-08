@@ -4,6 +4,13 @@ import { http, sleep } from "../http.js";
 import { ProviderError, type ConnectedAccount, type OAuthStart } from "../types.js";
 
 export const GRAPH = () => `https://graph.facebook.com/${config.meta.graphVersion}`;
+/** Instagram Login ile bağlanan hesaplar graph.facebook.com yerine graph.instagram.com'a gider */
+export const IG_GRAPH = () => `https://graph.instagram.com/${config.meta.graphVersion}`;
+
+/** Kanalın Graph tabanı: Instagram Login kanalları için graph.instagram.com, diğerleri varsayılan */
+export function channelBase(channel: { metadata: Record<string, unknown> }): string | undefined {
+  return channel.metadata.igLogin ? IG_GRAPH() : undefined;
+}
 
 /** Graph API GET/POST kısayolu: token query'de gider */
 export async function graph<T = Record<string, unknown>>(
@@ -207,18 +214,18 @@ export function insightBreakdown(row: InsightRow | undefined): Record<string, nu
  * Metrikleri önce tek istekte ister; Graph geçersiz/desteklenmeyen bir metrikte tüm isteği reddederse
  * her metriği ayrı dener. Alınamayan metrik sonuçta yer almaz.
  */
-export async function fetchInsights(path: string, token: string, metrics: string[], params: Record<string, unknown>): Promise<Map<string, InsightRow>> {
+export async function fetchInsights(path: string, token: string, metrics: string[], params: Record<string, unknown>, base?: string): Promise<Map<string, InsightRow>> {
   const out = new Map<string, InsightRow>();
   const take = (rows: InsightRow[] | undefined) => {
     for (const r of rows ?? []) out.set(r.name, r);
   };
   try {
-    take((await graph<{ data?: InsightRow[] }>(path, token, { params: { ...params, metric: metrics.join(",") } })).data);
+    take((await graph<{ data?: InsightRow[] }>(path, token, { params: { ...params, metric: metrics.join(",") }, base })).data);
     return out;
   } catch {
     for (const m of metrics) {
       try {
-        take((await graph<{ data?: InsightRow[] }>(path, token, { params: { ...params, metric: m } })).data);
+        take((await graph<{ data?: InsightRow[] }>(path, token, { params: { ...params, metric: m }, base })).data);
       } catch {
         /* bu metrik bu hesapta yok ya da izin verilmemiş */
       }

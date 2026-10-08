@@ -93,6 +93,8 @@ export const config = {
     webhookVerifyToken: env("META_WEBHOOK_VERIFY_TOKEN", "sosyalpilot-verify"),
   },
   threads: { appId: env("THREADS_APP_ID"), appSecret: env("THREADS_APP_SECRET") },
+  /** "Instagram API with Instagram Login": Facebook Sayfası gerektirmeyen doğrudan Instagram girişi (Meta uygulamasındaki Instagram ürününün kendi App ID/Secret'ı) */
+  instagram: { appId: env("INSTAGRAM_APP_ID"), appSecret: env("INSTAGRAM_APP_SECRET") },
   x: { clientId: env("X_CLIENT_ID"), clientSecret: env("X_CLIENT_SECRET") },
   linkedin: { clientId: env("LINKEDIN_CLIENT_ID"), clientSecret: env("LINKEDIN_CLIENT_SECRET") },
   tiktok: { clientKey: env("TIKTOK_CLIENT_KEY"), clientSecret: env("TIKTOK_CLIENT_SECRET") },
@@ -105,6 +107,15 @@ export const config = {
   },
   /** TikTok Ads raporları (isteğe bağlı): TikTok for Business geliştirici uygulaması (gönderi için kullanılan TikTok uygulamasından ayrı) */
   tiktokAds: { appId: env("TIKTOK_ADS_APP_ID"), secret: env("TIKTOK_ADS_SECRET") },
+  /**
+   * Bahsetme izleme kaynakları (isteğe bağlı). Haber (GDELT), Hacker News ve Bluesky anahtarsız çalışır;
+   * Reddit uygulama anahtarı (reddit.com/prefs/apps, "script" ya da "web app") ve web araması için Brave Search API anahtarı gerekir.
+   */
+  listening: {
+    redditClientId: env("REDDIT_CLIENT_ID"),
+    redditClientSecret: env("REDDIT_CLIENT_SECRET"),
+    braveKey: env("BRAVE_SEARCH_API_KEY"),
+  },
 
   security: {
     /** Panel dışındaki kökenlerden gelen çerezli istekleri reddet (CSRF) */

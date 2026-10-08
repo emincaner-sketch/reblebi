@@ -1,3 +1,4 @@
+import { config } from "../core/config.js";
 import type { ProviderId } from "../core/types.js";
 import { facebookProvider } from "./meta/facebook.js";
 import { instagramProvider } from "./meta/instagram.js";
@@ -85,5 +86,7 @@ export function describeProvider(p: Provider) {
     configured: p.isConfigured(),
     /** Instagram ve Facebook aynı Meta OAuth akışını paylaşır */
     oauthGroup: p.id === "instagram" || p.id === "facebook" ? "meta" : p.id,
+    /** Instagram için ikinci yol: Facebook Sayfası gerektirmeyen doğrudan Instagram girişi */
+    ...(p.id === "instagram" ? { directLogin: { oauthGroup: "instagram-login", configured: Boolean(config.instagram.appId && config.instagram.appSecret) } } : {}),
   };
 }

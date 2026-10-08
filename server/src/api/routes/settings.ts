@@ -256,7 +256,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       mcp: { url: `${config.publicUrl}/mcp`, enabled: hasFeature(ctx.orgId, "mcp") },
       webhooks: isAdmin ? { meta: { url: `${config.publicUrl}/webhooks/meta`, verifyToken: config.meta.webhookVerifyToken } } : null,
       oauthRedirects: isAdmin
-        ? Object.fromEntries(["meta", "threads", "x", "linkedin", "tiktok", "youtube", "gmb"].map((p) => [p, `${config.publicUrl}/api/oauth/${p}/callback`]))
+        ? Object.fromEntries(["meta", "instagram-login", "threads", "x", "linkedin", "tiktok", "youtube", "gmb"].map((p) => [p, `${config.publicUrl}/api/oauth/${p}/callback`]))
         : null,
       providers: listProviders().map(describeProvider),
       recentWebhooks: req.user?.isSuperadmin ? webhookEventsRepo.recent(20) : [],

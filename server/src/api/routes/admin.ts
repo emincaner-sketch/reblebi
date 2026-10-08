@@ -10,6 +10,7 @@ import { mailConfigured, devOutbox } from "../../services/mailer.js";
 import { dailyMaintenance } from "../../services/scheduler.js";
 import { usageSummary } from "../../services/limits.js";
 import { requireSuperadmin } from "../context.js";
+import { describePlatformKeys, savePlatformKeys } from "../../services/platform-keys.js";
 
 type Row = Record<string, unknown>;
 
@@ -119,6 +120,20 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/admin/outbox", async () => devOutbox());
 
   app.get("/api/admin/webhook-events", async () => webhookEventsRepo.recent(50));
+
+  app.get("/api/admin/platform-keys", async () => describePlatformKeys());
+
+  app.put("/api/admin/platform-keys/:id", async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const body = z.record(z.string(), z.string().max(500).nullable()).parse(req.body);
+    try {
+      savePlatformKeys(id, body);
+    } catch {
+      throw notFound("platform");
+    }
+    activityRepo.add(null, "info", "channel", `Platform anahtarları güncellendi: ${id}`);
+    return describePlatformKeys().find((g) => g.id === id);
+  });
 
   app.post("/api/admin/backup", async () => ({ file: await dailyMaintenance(true) }));
 }

@@ -8,6 +8,7 @@ import { blueskyProfile, blueskyRecentPosts } from "../providers/bluesky.js";
 import { facebookPagePublic } from "../providers/meta/facebook.js";
 import { twitchPublicChannel } from "../providers/twitch.js";
 import { businessDiscovery } from "../providers/meta/instagram.js";
+import { channelBase } from "../providers/meta/common.js";
 import { ProviderError } from "../providers/types.js";
 import { youtubePublicChannel } from "../providers/youtube.js";
 import { requireRole } from "./access.js";
@@ -154,7 +155,7 @@ async function fetchAccount(provider: CompetitorProvider, channel: Channel | nul
     const ch = await youtubePublicChannel(fresh.accessToken, handle);
     return { username: ch.handle, name: ch.name, avatarUrl: ch.avatarUrl, biography: ch.description, followers: ch.subscribers, mediaCount: ch.videoCount, media: ch.videos };
   }
-  const acc = await businessDiscovery(fresh.externalId, fresh.accessToken, handle);
+  const acc = await businessDiscovery(fresh.externalId, fresh.accessToken, handle, channelBase(fresh));
   return { username: acc.username, name: acc.name, avatarUrl: acc.avatarUrl, biography: acc.biography, followers: acc.followers, mediaCount: acc.mediaCount, media: acc.media };
 }
 

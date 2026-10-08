@@ -56,6 +56,17 @@ Reblebi is a social media management tool for small businesses and agencies. Use
 | Page Public Metadata Access | Facebook rakip takibi (takipçi) | `Used on the Competitors page: the user enters public Facebook Pages in their industry and Reblebi shows their public follower counts over time next to the user's own Page.` |
 | Page Public Content Access | Facebook rakip gönderileri | `Used on the Competitors page to show the public posts and their engagement of the competitor Pages the user explicitly adds.` |
 
+### 1.1b Instagram ile doğrudan giriş (Facebook Sayfası gerekmez)
+
+Kanallar > Kanal bağla > **Instagram ile giriş** kutucuğu "Instagram API with Instagram Login" akışını kullanır: kullanıcı yalnızca Instagram hesabıyla izin verir, Facebook Sayfası bağlaması gerekmez. Meta incelemesinde bu akış genelde daha hızlı onaylanır; Meta'ya göre "Instagram ile giriş" kullanıcı için en sade yoldur.
+
+- Meta uygulaması > Instagram > **API setup with Instagram login**: redirect URI `https://reblebi.com/api/oauth/instagram-login/callback`; **Instagram app ID / secret** panelde Kanallar > Kanal bağla > kutucuğa tıkla > rehberdeki alanlara girilir (`.env` gerekmez, `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` de olur).
+- İstenen izinler: `instagram_business_basic`, `instagram_business_content_publish`, `instagram_business_manage_comments`, `instagram_business_manage_messages`, `instagram_business_manage_insights`.
+- Webhook: aynı sayfada Callback URL `https://reblebi.com/webhooks/meta`, doğrulama jetonu Ayarlar > Sistem'de; `messages` ve `comments` alanlarına abone ol.
+- Jeton 60 gün geçerlidir ve süresi dolmadan otomatik yenilenir.
+- Bu yolda **yok**: hashtag takibi (`ig_hashtag_search` yalnızca Facebook girişinde), Facebook Sayfası yayını. Rakip takibi (Business Discovery), gönderi, hikâye, reel, yorum, DM ve insights çalışır.
+- İnceleme ekran kaydı: Reblebi'de kanal bağla > gönderi planla > yorumu yanıtla > DM yanıtla > analitik sayfası.
+
 ### 1.2 Reklamlar (ayrı bağlantı)
 
 | İzin | Açıklama | Video |

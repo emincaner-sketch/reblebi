@@ -7,6 +7,7 @@ import { useI18n } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
 import { Avatar, Can, Empty, Modal, PageHead, ProviderIcon, StatusBadge, UsageBar, useToast } from "../components/ui";
 import { copyText } from "../lib/clipboard";
+import { PLATFORM_GROUP, PlatformSetupModal } from "./PlatformSetup";
 
 function ChannelSettings({ c, customers, onClose }: { c: Channel; customers: Customer[] | null; onClose: () => void }) {
   const { t } = useI18n();
@@ -214,6 +215,7 @@ export default function ChannelsPage() {
   const [params, setParams] = useSearchParams();
   const [open, setOpen] = useState(false);
   const [shopifyOpen, setShopifyOpen] = useState(false);
+  const [setupFor, setSetupFor] = useState<string | null | undefined>(undefined);
   const [formProvider, setFormProvider] = useState<ProviderInfo | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Channel | null>(null);
@@ -460,19 +462,48 @@ export default function ChannelsPage() {
                   </div>
                   <ExternalLink style={{ marginLeft: "auto", width: 14, opacity: 0.5 }} />
                 </button>
+                {tiles
+                  .filter((p) => p.directLogin)
+                  .map((p) => (
+                    <button
+                      key="ig-direct"
+                      className="connect-tile"
+                      onClick={() => {
+                        if (!p.directLogin!.configured) {
+                          setOpen(false);
+                          setSetupFor("instagram");
+                          return;
+                        }
+                        startOAuth({ ...p, oauthGroup: p.directLogin!.oauthGroup });
+                      }}
+                    >
+                      <ProviderIcon provider={p.id} size={34} />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{t("Instagram ile giriş")}</div>
+                        <div className="muted small">{p.directLogin!.configured ? t("Facebook Sayfası gerekmez") : t("Kurulum gerekli")}</div>
+                      </div>
+                      <ExternalLink style={{ marginLeft: "auto", width: 14, opacity: 0.5 }} />
+                    </button>
+                  ))}
                 {tiles.map((p) => (
                   <button
                     key={p.id}
                     className="connect-tile"
-                    disabled={!p.configured}
-                    title={p.configured ? "" : t("Platform yöneticisi bu entegrasyonu henüz yapılandırmadı")}
-                    onClick={() => (p.connectMode === "oauth" ? startOAuth(p) : setFormProvider(p))}
+                    onClick={() => {
+                      if (!p.configured) {
+                        setOpen(false);
+                        setSetupFor(PLATFORM_GROUP[p.id] ?? p.id);
+                        return;
+                      }
+                      if (p.connectMode === "oauth") startOAuth(p);
+                      else setFormProvider(p);
+                    }}
                   >
                     <ProviderIcon provider={p.id} size={34} />
                     <div>
                       <div style={{ fontWeight: 600 }}>{p.oauthGroup === "meta" ? "Instagram + Facebook" : p.label}</div>
                       <div className="muted small">
-                        {!p.configured ? t("Yapılandırılmadı") : p.connectMode === "oauth" ? "OAuth" : "Token"}
+                        {!p.configured ? t("Kurulum gerekli") : p.connectMode === "oauth" ? "OAuth" : "Token"}
                         {p.oauthGroup === "meta" ? " · Meta" : ""}
                       </div>
                     </div>
@@ -487,7 +518,7 @@ export default function ChannelsPage() {
               )}
               {s.user.isSuperadmin && tiles.some((p) => !p.configured) && (
                 <p className="muted small" style={{ marginTop: 8 }}>
-                  {t("Gri olanlar için sunucu .env dosyasına uygulama anahtarlarını ekle (docs/KURULUM.md).")}
+                  {t("\"Kurulum gerekli\" olanlara tıkla: adım adım rehber açılır, uygulama anahtarlarını panelden girersin (docs/KURULUM.md).")}
                 </p>
               )}
             </>
@@ -519,6 +550,7 @@ export default function ChannelsPage() {
         </Modal>
       )}
 
+      {setupFor !== undefined && <PlatformSetupModal initial={setupFor} onClose={() => setSetupFor(undefined)} />}
       {shopifyOpen && <ShopifyConnectModal onClose={() => setShopifyOpen(false)} />}
     </>
   );

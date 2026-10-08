@@ -6,6 +6,7 @@ import { activityRepo, oauthStatesRepo } from "../core/repos/misc.js";
 import { orgSettingsRepo } from "../core/repos/orgs.js";
 import type { Channel, Ctx, ProviderId } from "../core/types.js";
 import { getProvider, type ConnectedAccount } from "../providers/index.js";
+import { instagramLoginFlow } from "../providers/meta/instagram.js";
 import { requireRole } from "./access.js";
 import { assertChannelQuota } from "./limits.js";
 import { ensureFreshToken } from "./publisher.js";
@@ -14,6 +15,7 @@ import { describeSlots } from "./slots.js";
 /** Meta OAuth akışı 'meta' adıyla başlatılır; instagram + facebook aynı dönüşte oluşur */
 export function resolveOAuthProvider(name: string): ProviderId {
   if (name === "meta") return "facebook";
+  if (name === "instagram-login") return "instagram";
   const valid: ProviderId[] = ["instagram", "facebook", "threads", "whatsapp", "x", "linkedin", "tiktok", "youtube", "telegram"];
   if (!valid.includes(name as ProviderId)) throw new AppError(404, "err.not_found", { what: "provider" });
   return name as ProviderId;
@@ -58,10 +60,15 @@ export async function connectWithForm(ctx: Ctx, pid: ProviderId, values: Record<
   return saveAccounts(ctx, pid, accounts);
 }
 
+/** "instagram-login": Facebook Sayfası gerektirmeyen doğrudan Instagram girişi; diğerleri sağlayıcının kendi akışı */
+function oauthFlow(name: string, pid: ProviderId) {
+  return name === "instagram-login" ? instagramLoginFlow : getProvider(pid);
+}
+
 export function startOAuth(ctx: Ctx, name: string): { url: string } {
   requireRole(ctx, "admin");
   const pid = resolveOAuthProvider(name);
-  const provider = getProvider(pid);
+  const provider = oauthFlow(name, pid);
   if (!provider.oauthStart) throw new AppError(400, "channel.form_only");
   if (!provider.isConfigured()) throw new AppError(400, "channel.not_configured", { provider: provider.label });
   assertChannelQuota(ctx.orgId, 1);
@@ -76,7 +83,7 @@ export async function finishOAuth(name: string, code: string, state: string): Pr
   const st = oauthStatesRepo.consume(state);
   if (!st) throw new AppError(400, "channel.oauth_state");
   const pid = resolveOAuthProvider(name);
-  const provider = getProvider(pid);
+  const provider = oauthFlow(name, pid);
   if (!provider.oauthCallback) throw new AppError(400, "channel.form_only");
   const accounts = await provider.oauthCallback(code, oauthRedirectUri(name), st.codeVerifier);
   const ctx: Ctx = { orgId: st.orgId, userId: st.userId, role: "admin", via: "session", locale: "tr" };

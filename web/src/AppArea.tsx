@@ -27,6 +27,7 @@ import StudioPage from "./pages/Studio";
 import AutolistsPage from "./pages/Autolists";
 import BulkImportPage from "./pages/BulkImport";
 import WebsitePage from "./pages/Website";
+import MentionsPage from "./pages/Mentions";
 import FeedGridPage from "./pages/FeedGrid";
 import MediaPage from "./pages/Media";
 import TeamPage from "./pages/Team";
@@ -116,6 +117,7 @@ export default function AppArea() {
           <Route path="analytics/website" element={<WebsitePage />} />
           <Route path="analytics/ads" element={<AdsPage />} />
           <Route path="analytics/hashtags" element={<HashtagsPage />} />
+          <Route path="analytics/mentions" element={<MentionsPage />} />
           <Route path="media" element={<MediaPage />} />
           <Route path="bio" element={<BioPageScreen />} />
           <Route path="library" element={<LibraryPage />} />

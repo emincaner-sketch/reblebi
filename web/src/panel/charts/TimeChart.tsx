@@ -23,6 +23,8 @@ interface Props {
   area?: boolean;
   /** Çizgide sıfırdan başlama (takipçi gibi büyük tabanlı seriler) */
   zeroBaseline?: boolean;
+  /** Sütunlarda serileri üst üste yığ (ör. kaynak başına günlük bahsetme); aradaki 2px yüzey boşluğu ayırır */
+  stacked?: boolean;
 }
 
 const PAD = { top: 12, right: 14, bottom: 28 };
@@ -33,13 +35,15 @@ const X_BAND = PAD.bottom;
  * 2px çizgi, ≥8px son nokta + 2px yüzey halkası, sütun ≤24px ve 4px yuvarlak uç, kılçık ızgara,
  * dikey imleç + tek ipucu kutusu (tüm seriler), klavyeyle gezinme (← →), ≥2 seride gösterge.
  */
-export function TimeChart({ dates, series, kind, format, ariaLabel, height = 200, area = false, zeroBaseline = kind === "bar" }: Props) {
-  const { intl } = useI18n();
+export function TimeChart({ dates, series, kind, format, ariaLabel, height = 200, area = false, zeroBaseline = kind === "bar", stacked = false }: Props) {
+  const { intl, t } = useI18n();
   const { ref, width } = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const clipId = useId().replace(/:/g, "");
 
-  const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
+  const stack = kind === "bar" && stacked;
+  const sums = stack ? dates.map((_, i) => series.reduce((a, s) => a + (s.values[i] ?? 0), 0)) : [];
+  const all = stack ? sums.filter((v) => v > 0) : series.flatMap((s) => s.values.filter((v): v is number => v !== null));
   const hasData = all.length > 0;
   const lo = zeroBaseline ? 0 : Math.min(...all);
   const hi = Math.max(...all, zeroBaseline ? 1 : -Infinity);
@@ -140,7 +144,39 @@ export function TimeChart({ dates, series, kind, format, ariaLabel, height = 200
           ))}
           {hasData && (
             <g clipPath={`url(#${clipId})`}>
-              {kind === "bar"
+              {stack
+                ? dates.map((_, i) => {
+                    // Alttan üste: her dilim 2px yüzey boşluğuyla ayrılır, yalnızca en üstteki dilimin ucu yuvarlak
+                    const bottom = PAD.top + plotH;
+                    const bx = x(i) - barW / 2;
+                    let acc = 0;
+                    const segs = series.flatMap((s) => {
+                      const v = s.values[i] ?? 0;
+                      if (v <= 0) return [];
+                      const from = acc;
+                      acc += v;
+                      return [{ s, from, to: acc }];
+                    });
+                    return (
+                      <g key={i} opacity={hover !== null && hover !== i ? 0.55 : 1}>
+                        {segs.map(({ s, from, to }, k) => {
+                          const top = y(to);
+                          const base = y(from) - (k > 0 ? 2 : 0);
+                          if (base - top < 0.5) return null;
+                          const last = k === segs.length - 1;
+                          const r = last ? Math.min(4, barW / 2, base - top) : 0;
+                          return (
+                            <path
+                              key={s.key}
+                              d={`M${bx},${k === 0 ? bottom : base} V${top + r} Q${bx},${top} ${bx + r},${top} H${bx + barW - r} Q${bx + barW},${top} ${bx + barW},${top + r} V${k === 0 ? bottom : base} Z`}
+                              fill={s.color}
+                            />
+                          );
+                        })}
+                      </g>
+                    );
+                  })
+                : kind === "bar"
                 ? series.slice(0, 1).map((s) =>
                     s.values.map((v, i) => {
                       if (v === null || v <= 0) return null;
@@ -190,6 +226,12 @@ export function TimeChart({ dates, series, kind, format, ariaLabel, height = 200
         {tip && (
           <div className="ch-tip" style={{ left: flip ? undefined : tipLeft, right: flip ? Math.max(8, width - x(tip.i) + 12) : undefined, top: 4 }} role="status" aria-live="polite">
             <div className="ch-tip-date">{fmtDay(tip.date, intl, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</div>
+            {stack && (
+              <div className="ch-tip-row">
+                <strong>{format(sums[tip.i] ?? 0)}</strong>
+                <span>{t("Toplam")}</span>
+              </div>
+            )}
             {tip.rows.map(({ s, v }) => (
               <div key={s.key} className="ch-tip-row">
                 <i className="ch-key" style={{ background: s.color }} aria-hidden="true" />

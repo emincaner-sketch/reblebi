@@ -168,6 +168,7 @@ import { snapshotHashtags } from "./hashtag-tracker.js";
 import { runAutolists } from "./autolists.js";
 import { purgeSeen } from "./site-analytics.js";
 import { sendScheduledDashboards } from "./dashboard-email.js";
+import { runDueListening } from "./listening.js";
 
 export function startScheduler(): void {
   stopScheduler();
@@ -191,6 +192,8 @@ export function startScheduler(): void {
   timers.push(setInterval(() => void guarded("ads", async () => void (await syncAllAdAccounts())), 60 * 60_000));
   // Hashtag takibi: günde bir ölçüm
   timers.push(setInterval(() => void guarded("hashtags", async () => void (await snapshotHashtags())), 60 * 60_000));
+  // Bahsetme izleme: 10 dakikada bir, kaynak aralığı dolan sorgular (haber/Bluesky 30–60 dk, YouTube 6 sa, web 12 sa)
+  timers.push(setInterval(() => void guarded("listening", async () => void (await runDueListening())), 10 * 60_000));
   // Web sitesi analitiği: 2 günden eski tekil-ziyaretçi hash'leri silinir
   timers.push(setInterval(() => void guarded("site-seen", async () => purgeSeen()), 6 * 60 * 60_000));
   // Otomatik listeler: dakikada bir vakti gelen slot (oluşan gönderiyi yayın kuyruğu yayınlar)

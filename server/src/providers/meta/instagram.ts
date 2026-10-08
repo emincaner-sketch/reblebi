@@ -1,24 +1,24 @@
 import { config } from "../../core/config.js";
 import type { Channel } from "../../core/types.js";
-import { sleep } from "../http.js";
-import { ProviderError, type AudienceBreakdown, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
-import { fetchInsights, GRAPH, graph, insightBreakdown, insightNumber, metaOAuthCallback, metaOAuthStart, sendPageMessage, waitForContainer } from "./common.js";
+import { http, sleep } from "../http.js";
+import { ProviderError, type AudienceBreakdown, type ConnectedAccount, type OAuthStart, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
+import { channelBase, fetchInsights, GRAPH, graph, IG_GRAPH, insightBreakdown, insightNumber, metaOAuthCallback, metaOAuthStart, sendPageMessage, waitForContainer } from "./common.js";
 
-async function createContainer(igId: string, token: string, params: Record<string, unknown>): Promise<string> {
-  const r = await graph<{ id: string }>(`/${igId}/media`, token, { method: "POST", params });
+async function createContainer(igId: string, token: string, params: Record<string, unknown>, base?: string): Promise<string> {
+  const r = await graph<{ id: string }>(`/${igId}/media`, token, { method: "POST", params, base });
   return r.id;
 }
 
-async function publishContainer(igId: string, token: string, creationId: string): Promise<PublishResult> {
+async function publishContainer(igId: string, token: string, creationId: string, base?: string): Promise<PublishResult> {
   // Görsel konteynerler genelde anında hazırdır; video/reel/story-video için durum beklenir
-  await waitForContainer(`${GRAPH()}/${creationId}`, token, { timeoutMs: 6 * 60_000 });
+  await waitForContainer(`${base ?? GRAPH()}/${creationId}`, token, { timeoutMs: 6 * 60_000 });
   let lastErr: unknown;
   for (let i = 0; i < 4; i++) {
     try {
-      const r = await graph<{ id: string }>(`/${igId}/media_publish`, token, { method: "POST", params: { creation_id: creationId } });
+      const r = await graph<{ id: string }>(`/${igId}/media_publish`, token, { method: "POST", params: { creation_id: creationId }, base });
       let url: string | null = null;
       try {
-        const info = await graph<{ permalink?: string }>(`/${r.id}`, token, { params: { fields: "permalink" } });
+        const info = await graph<{ permalink?: string }>(`/${r.id}`, token, { params: { fields: "permalink" }, base });
         url = info.permalink ?? null;
       } catch {
         /* permalink alınamazsa sorun değil */
@@ -69,6 +69,7 @@ export const instagramProvider: Provider = {
   async publish(channel: Channel, input: PublishInput): Promise<PublishResult> {
     const igId = channel.externalId;
     const token = channel.accessToken;
+    const base = channelBase(channel);
     const media = input.media;
     if (!media.length) throw new ProviderError("Instagram için en az bir görsel ya da video gerekli");
 
@@ -77,8 +78,8 @@ export const instagramProvider: Provider = {
       const id = await createContainer(igId, token, {
         media_type: "STORIES",
         ...(m.kind === "video" ? { video_url: m.publicUrl } : { image_url: m.publicUrl }),
-      });
-      return publishContainer(igId, token, id);
+      }, base);
+      return publishContainer(igId, token, id, base);
     }
 
     if (input.kind === "reel" || input.kind === "video") {
@@ -91,8 +92,8 @@ export const instagramProvider: Provider = {
         share_to_feed: input.settings.shareToFeed === false ? false : true,
         cover_url: (input.settings.coverUrl as string) || undefined,
         location_id: (input.settings.locationId as string) || undefined,
-      });
-      return publishContainer(igId, token, id);
+      }, base);
+      return publishContainer(igId, token, id, base);
     }
 
     if (media.length === 1) {
@@ -101,15 +102,15 @@ export const instagramProvider: Provider = {
         ...(m.kind === "video" ? { media_type: "REELS", video_url: m.publicUrl, share_to_feed: true } : { image_url: m.publicUrl }),
         caption: input.text,
         location_id: (input.settings.locationId as string) || undefined,
-      });
-      return publishContainer(igId, token, id);
+      }, base);
+      return publishContainer(igId, token, id, base);
     }
 
     // Carousel (2-10 öğe)
     const children: string[] = [];
     for (const m of media.slice(0, 10)) {
-      const cid = await createContainer(igId, token, mediaParams(m, { is_carousel_item: true }));
-      if (m.kind === "video") await waitForContainer(`${GRAPH()}/${cid}`, token);
+      const cid = await createContainer(igId, token, mediaParams(m, { is_carousel_item: true }), base);
+      if (m.kind === "video") await waitForContainer(`${base ?? GRAPH()}/${cid}`, token);
       children.push(cid);
     }
     const parent = await createContainer(igId, token, {
@@ -117,11 +118,19 @@ export const instagramProvider: Provider = {
       children: children.join(","),
       caption: input.text,
       location_id: (input.settings.locationId as string) || undefined,
-    });
-    return publishContainer(igId, token, parent);
+    }, base);
+    return publishContainer(igId, token, parent, base);
   },
 
   async sendMessage({ channel, participantId, text }) {
+    if (channel.metadata.igLogin) {
+      const r = await graph<{ message_id?: string }>(`/${channel.externalId}/messages`, channel.accessToken, {
+        method: "POST",
+        params: { recipient: { id: participantId }, message: { text } },
+        base: IG_GRAPH(),
+      });
+      return { externalId: r.message_id ?? null };
+    }
     const pageId = (channel.metadata.pageId as string) || channel.externalId;
     const id = await sendPageMessage(pageId, channel.accessToken, participantId, text);
     return { externalId: id };
@@ -129,8 +138,10 @@ export const instagramProvider: Provider = {
 
   async fetchMetrics(channel: Channel) {
     const token = channel.accessToken;
+    const base = channelBase(channel);
     const basic = await graph<{ followers_count?: number; media_count?: number }>(`/${channel.externalId}`, token, {
       params: { fields: "followers_count,media_count" },
+      base,
     });
     const metrics: Record<string, number> = {
       followers: Number(basic.followers_count ?? 0),
@@ -140,7 +151,7 @@ export const instagramProvider: Provider = {
       const ins = await graph<{ data?: Array<{ name: string; total_value?: { value: number }; values?: Array<{ value: number }> }> }>(
         `/${channel.externalId}/insights`,
         token,
-        { params: { metric: "reach,accounts_engaged", period: "day", metric_type: "total_value" } },
+        { params: { metric: "reach,accounts_engaged", period: "day", metric_type: "total_value" }, base },
       );
       for (const d of ins.data ?? []) {
         const v = d.total_value?.value ?? d.values?.[d.values.length - 1]?.value;
@@ -154,13 +165,14 @@ export const instagramProvider: Provider = {
 
   async publishComment(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null) {
     const edge = replyToExternalId ? `/${replyToExternalId}/replies` : `/${parentExternalId}/comments`;
-    const r = await graph<{ id: string }>(edge, channel.accessToken, { method: "POST", params: { message: text } });
+    const r = await graph<{ id: string }>(edge, channel.accessToken, { method: "POST", params: { message: text }, base: channelBase(channel) });
     return { externalId: r.id };
   },
 
   async fetchPostMetrics(channel: Channel, externalId: string) {
     const base = await graph<{ like_count?: number; comments_count?: number; media_product_type?: string }>(`/${externalId}`, channel.accessToken, {
       params: { fields: "like_count,comments_count,media_product_type" },
+      base: channelBase(channel),
     });
     const m: Record<string, number> = { likes: Number(base.like_count ?? 0), comments: Number(base.comments_count ?? 0) };
     // İçerik biçimine göre desteklenen metrikler farklı: geçersiz biri tüm isteği düşürmesin
@@ -171,7 +183,7 @@ export const instagramProvider: Provider = {
         : type === "REELS"
           ? ["reach", "views", "saved", "shares", "total_interactions", "ig_reels_avg_watch_time"]
           : ["reach", "views", "saved", "shares", "total_interactions", "profile_visits", "follows"];
-    const rows = await fetchInsights(`/${externalId}/insights`, channel.accessToken, metrics, {});
+    const rows = await fetchInsights(`/${externalId}/insights`, channel.accessToken, metrics, {}, channelBase(channel));
     for (const [name, row] of rows) {
       const v = insightNumber(row);
       if (v === null) continue;
@@ -185,7 +197,7 @@ export const instagramProvider: Provider = {
   async fetchDailyInsights(channel: Channel, range: { since: number; until: number }) {
     const out: Record<string, number> = {};
     const names: Record<string, string> = { reach: "reach", views: "views", profile_views: "profileViews", website_clicks: "websiteClicks", accounts_engaged: "engaged" };
-    const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, Object.keys(names), { period: "day", metric_type: "total_value", since: range.since, until: range.until });
+    const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, Object.keys(names), { period: "day", metric_type: "total_value", since: range.since, until: range.until }, channelBase(channel));
     for (const [name, row] of rows) {
       const v = insightNumber(row);
       if (v !== null && names[name]) out[names[name]] = v;
@@ -197,7 +209,7 @@ export const instagramProvider: Provider = {
       breakdown: "follow_type",
       since: range.since,
       until: range.until,
-    });
+    }, channelBase(channel));
     const split = insightBreakdown(fu.get("follows_and_unfollows"));
     if (split.FOLLOWER !== undefined) out.follows = split.FOLLOWER;
     if (split.NON_FOLLOWER !== undefined) out.unfollows = split.NON_FOLLOWER;
@@ -208,16 +220,25 @@ export const instagramProvider: Provider = {
     // follower_demographics en az 100 takipçide döner; her kırılım ayrı istek ister
     const out: AudienceBreakdown = {};
     for (const bd of ["country", "city", "age", "gender"] as const) {
-      const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, ["follower_demographics"], { period: "lifetime", metric_type: "total_value", breakdown: bd });
+      const rows = await fetchInsights(`/${channel.externalId}/insights`, channel.accessToken, ["follower_demographics"], { period: "lifetime", metric_type: "total_value", breakdown: bd }, channelBase(channel));
       const rec = insightBreakdown(rows.get("follower_demographics"));
       if (Object.keys(rec).length) out[bd] = rec;
     }
     return out;
   },
 
+  /** Instagram Login jetonu 60 gün geçerlidir; süresi dolmadan yenilenir */
+  async refreshToken(channel: Channel) {
+    if (!channel.metadata.igLogin) return null;
+    const r = await http<{ access_token: string; expires_in?: number }>("https://graph.instagram.com/refresh_access_token", {
+      query: { grant_type: "ig_refresh_token", access_token: channel.accessToken },
+    });
+    return { accessToken: r.access_token, tokenExpiresAt: r.expires_in ? new Date(Date.now() + r.expires_in * 1000).toISOString() : null };
+  },
+
   async healthCheck(channel: Channel) {
     try {
-      await graph(`/${channel.externalId}`, channel.accessToken, { params: { fields: "id,username" } });
+      await graph(`/${channel.externalId}`, channel.accessToken, { params: { fields: "id,username" }, base: channelBase(channel) });
       return { ok: true };
     } catch (e) {
       return { ok: false, detail: e instanceof Error ? e.message : String(e) };
@@ -241,7 +262,7 @@ export interface DiscoveredAccount {
  * Başka bir Instagram işletme/içerik üreticisi hesabının herkese açık metrikleri (kendi IG hesabının jetonuyla).
  * Kişisel hesaplar ve gizli beğeni sayıları dönmez; o alanlar null kalır.
  */
-export async function businessDiscovery(igUserId: string, token: string, username: string): Promise<DiscoveredAccount> {
+export async function businessDiscovery(igUserId: string, token: string, username: string, base?: string): Promise<DiscoveredAccount> {
   const clean = username.replace(/^@/, "").trim().toLowerCase();
   const fields = `business_discovery.username(${clean}){username,name,profile_picture_url,biography,followers_count,media_count,media.limit(25){id,caption,like_count,comments_count,timestamp,media_type,permalink}}`;
   const r = await graph<{
@@ -254,7 +275,7 @@ export async function businessDiscovery(igUserId: string, token: string, usernam
       media_count?: number;
       media?: { data?: Array<{ id: string; caption?: string; like_count?: number; comments_count?: number; timestamp?: string; media_type?: string; permalink?: string }> };
     };
-  }>(`/${igUserId}`, token, { params: { fields } });
+  }>(`/${igUserId}`, token, { params: { fields }, base });
   const b = r.business_discovery;
   if (!b) throw new ProviderError("Hesap bulunamadı ya da işletme/içerik üreticisi hesabı değil", 404);
   return {
@@ -290,11 +311,11 @@ export interface FeedItem {
 }
 
 /** Hesabın profilde görünen son gönderileri (ızgara önizlemesi için; hikâyeler dahil değil) */
-export async function instagramRecentMedia(igUserId: string, token: string, limit = 30): Promise<FeedItem[]> {
+export async function instagramRecentMedia(igUserId: string, token: string, limit = 30, base?: string): Promise<FeedItem[]> {
   const r = await graph<{ data?: Array<{ id: string; caption?: string; media_type?: string; media_url?: string; thumbnail_url?: string; permalink?: string; timestamp?: string; like_count?: number; comments_count?: number }> }>(
     `/${igUserId}/media`,
     token,
-    { params: { fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count", limit } },
+    { params: { fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count", limit }, base },
   );
   return (r.data ?? []).map((m) => ({
     id: m.id,
@@ -307,3 +328,71 @@ export async function instagramRecentMedia(igUserId: string, token: string, limi
     comments: m.comments_count ?? null,
   }));
 }
+
+/* ---------------- Instagram Login (Facebook Sayfası gerektirmez) ---------------- */
+
+/** "Instagram API with Instagram Login" izinleri */
+export const IG_LOGIN_SCOPES = [
+  "instagram_business_basic",
+  "instagram_business_content_publish",
+  "instagram_business_manage_comments",
+  "instagram_business_manage_messages",
+  "instagram_business_manage_insights",
+];
+
+export const instagramLoginFlow = {
+  label: "Instagram",
+  isConfigured: () => Boolean(config.instagram.appId && config.instagram.appSecret),
+
+  oauthStart(redirectUri: string, state: string): OAuthStart {
+    const u = new URL("https://www.instagram.com/oauth/authorize");
+    u.searchParams.set("client_id", config.instagram.appId);
+    u.searchParams.set("redirect_uri", redirectUri);
+    u.searchParams.set("state", state);
+    u.searchParams.set("response_type", "code");
+    u.searchParams.set("scope", IG_LOGIN_SCOPES.join(","));
+    u.searchParams.set("enable_fb_login", "0");
+    return { url: u.toString() };
+  },
+
+  async oauthCallback(code: string, redirectUri: string): Promise<ConnectedAccount[]> {
+    const short = await http<{ access_token?: string; user_id?: number | string; data?: Array<{ access_token: string; user_id: number | string }> }>("https://api.instagram.com/oauth/access_token", {
+      method: "POST",
+      form: { client_id: config.instagram.appId, client_secret: config.instagram.appSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code },
+    });
+    const shortToken = short.access_token ?? short.data?.[0]?.access_token;
+    if (!shortToken) throw new ProviderError("Instagram jeton vermedi");
+    const long = await http<{ access_token: string; expires_in?: number }>("https://graph.instagram.com/access_token", {
+      query: { grant_type: "ig_exchange_token", client_secret: config.instagram.appSecret, access_token: shortToken },
+    });
+    const token = long.access_token;
+    const me = await graph<{ id?: string; user_id?: string; username?: string; name?: string; profile_picture_url?: string; account_type?: string }>("/me", token, {
+      params: { fields: "user_id,username,name,profile_picture_url,account_type" },
+      base: IG_GRAPH(),
+    });
+    const igId = String(me.user_id ?? short.user_id ?? me.id ?? "");
+    if (!igId) throw new ProviderError("Instagram hesap kimliği alınamadı");
+    if (me.account_type && !/BUSINESS|CREATOR|MEDIA_CREATOR/i.test(me.account_type)) {
+      throw new ProviderError("Bu hesap Profesyonel (İşletme veya İçerik Üreticisi) değil. Instagram uygulamasında Ayarlar > Hesap türü bölümünden profesyonel hesaba geç ve tekrar dene.");
+    }
+    // Gelen kutusu için webhook aboneliği (en iyi çaba: uygulama modu/izin yüzünden başarısız olabilir)
+    try {
+      await graph(`/${igId}/subscribed_apps`, token, { method: "POST", params: { subscribed_fields: "messages,messaging_postbacks,message_reactions,comments,live_comments" }, base: IG_GRAPH() });
+    } catch {
+      /* abonelik sonradan Meta panelinden de yapılabilir */
+    }
+    return [
+      {
+        provider: "instagram",
+        externalId: igId,
+        name: me.name ?? me.username ?? "Instagram",
+        username: me.username ?? null,
+        avatarUrl: me.profile_picture_url ?? null,
+        accessToken: token,
+        tokenExpiresAt: long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null,
+        scopes: IG_LOGIN_SCOPES.join(","),
+        metadata: { igLogin: true, igUserId: igId, accountType: me.account_type ?? null },
+      },
+    ];
+  },
+};

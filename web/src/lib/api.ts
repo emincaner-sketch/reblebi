@@ -134,6 +134,8 @@ export interface ProviderInfo {
   connectFields: SettingField[];
   configured: boolean;
   oauthGroup: string;
+  /** Instagram: Facebook Sayfası gerektirmeyen doğrudan giriş */
+  directLogin?: { oauthGroup: string; configured: boolean };
 }
 
 export interface Channel {
