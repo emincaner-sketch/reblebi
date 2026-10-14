@@ -2019,6 +2019,7 @@ export default function AutomationPage() {
                   onChange={(e) => setEditingRule({ ...editingRule, pattern: e.target.value })}
                   placeholder={t("fiyat, ücret, kaç para, ne kadar")}
                 />
+                <span className="help">{t("Tam kelime aranır: \"dur\" yazarsan \"durum\" eşleşmez. Ekli halleri için sonuna * koy: \"fiyat*\" → fiyatı, fiyatlar.")}</span>
               </div>
             )}
 

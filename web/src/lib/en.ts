@@ -1087,6 +1087,7 @@ export const EN: Record<string, string> = {
   "Her Mesaj": "Every Message",
   "Öncelik (Düşük sayı önce çalışır)": "Priority (lower number runs first)",
   "Anahtar Kelimeler (Virgülle ayırın)": "Keywords (comma-separated)",
+  "Tam kelime aranır: \"dur\" yazarsan \"durum\" eşleşmez. Ekli halleri için sonuna * koy: \"fiyat*\" → fiyatı, fiyatlar.": "Whole words only: \"stop\" won't match \"stopwatch\". Add * to match word endings: \"price*\" → prices, pricing.",
   "Yanıt Modu": "Reply Mode",
   "Sabit Metin Şablonu": "Static Text Template",
   "AI Yanıtı": "AI Reply",

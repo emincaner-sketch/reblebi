@@ -9,6 +9,7 @@ import type { AutoReplyRule, Channel, Conversation, Ctx, Message, OrgSettings, P
 import { aiAvailable, draftReply } from "../ai/index.js";
 import { getProvider, lookupParticipant, type InboundEvent } from "../providers/index.js";
 import { requireRole } from "./access.js";
+import { matchesKeywords } from "./keyword-match.js";
 import { hasFeature } from "./limits.js";
 import { emitWebhook, notify, orgT } from "./notify.js";
 import { ensureFreshToken } from "./publisher.js";
@@ -32,23 +33,14 @@ function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => vars[k] ?? "");
 }
 
-function normalize(s: string): string {
-  return s.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
-}
-
 export function ruleMatches(rule: Pick<AutoReplyRule, "matchType" | "pattern">, text: string, isFirstContact: boolean): boolean {
-  const t = normalize(text);
   switch (rule.matchType) {
     case "any":
       return true;
     case "first_contact":
       return isFirstContact;
     case "keyword":
-      return (rule.pattern ?? "")
-        .split(",")
-        .map(normalize)
-        .filter(Boolean)
-        .some((w) => t.includes(w));
+      return matchesKeywords(rule.pattern, text);
     case "regex":
       if (!rule.pattern || rule.pattern.length > 300) return false;
       try {
@@ -61,13 +53,8 @@ export function ruleMatches(rule: Pick<AutoReplyRule, "matchType" | "pattern">, 
   }
 }
 
-function containsHandoffKeyword(text: string, s: OrgSettings): boolean {
-  const t = normalize(text);
-  return s.handoffKeywords
-    .split(",")
-    .map(normalize)
-    .filter(Boolean)
-    .some((w) => t.includes(w));
+export function containsHandoffKeyword(text: string, s: Pick<OrgSettings, "handoffKeywords">): boolean {
+  return matchesKeywords(s.handoffKeywords, text);
 }
 
 /* ---------------- Gönderim ---------------- */

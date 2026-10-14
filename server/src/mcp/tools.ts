@@ -593,7 +593,7 @@ export function buildMcpServer(ctx: Ctx): McpServer {
     "create_rule",
     {
       title: "Create auto-reply rule · Kural ekle",
-      description: "matchType: keyword (comma-separated words), regex, first_contact or any. replyMode template uses replyText ({{name}} placeholder); ai uses aiInstructions. Lower priority runs first.",
+      description: "matchType: keyword (comma-separated words or phrases, matched as whole words, case- and Turkish-accent-insensitive; end a word with * to also match suffixed forms, e.g. fiyat*), regex, first_contact or any. replyMode template uses replyText ({{name}} placeholder); ai uses aiInstructions. Lower priority runs first.",
       inputSchema: RuleSchema.shape,
     },
     async (a) =>
