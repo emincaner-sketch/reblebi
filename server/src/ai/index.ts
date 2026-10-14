@@ -115,6 +115,43 @@ export async function improveText(orgId: string, text: string, instruction: stri
   });
 }
 
+/* ---------------- İçerik radarı: tutan gönderiyi markaya uyarlama ---------------- */
+
+export interface AdaptInput {
+  kind: string;
+  owner: string;
+  followers: number | null;
+  performance: string;
+  caption: string;
+  permalink: string | null;
+}
+
+/** Başka hesapta tutan bir gönderinin mekanizmasını markaya ÖZGÜN bir içerik planı olarak uyarlar (kopyalamaz) */
+export async function adaptViralPost(orgId: string, input: AdaptInput): Promise<string> {
+  const cfg = requireAi(orgId);
+  return aiText(cfg, {
+    system: systemPrompt(
+      orgId,
+      [
+        "\n# Task: adapt a post that performed well on another Instagram account",
+        "Explain why it worked, then write an ORIGINAL adaptation for this brand. Never copy the source caption, script or sentences; reuse the mechanism, structure and angle.",
+        "Output these sections with short headings: 1) Why it worked (max 3 bullets) 2) Hook options (3) 3) Content plan (Reel: scene by scene 30-45s script; carousel: 6-8 slides; single image: design and on-image text) 4) Caption ready to paste, ending with a call to action 5) Hashtags (8-12).",
+      ].join("\n"),
+    ),
+    user: [
+      `Source account: @${input.owner}${input.followers ? ` (${input.followers} followers)` : ""}`,
+      `Format: ${input.kind}`,
+      `Performance: ${input.performance}`,
+      input.permalink ? `Link: ${input.permalink}` : "",
+      `Source caption:\n"""\n${input.caption.slice(0, 2200) || "(no text)"}\n"""`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    maxTokens: 8000,
+    effort: "medium",
+  });
+}
+
 /* ---------------- DM yanıtı ---------------- */
 
 const ReplySchema = z.object({

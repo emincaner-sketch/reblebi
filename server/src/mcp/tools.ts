@@ -35,6 +35,8 @@ import {
   type PostInput,
 } from "../services/posts.js";
 import { findFreeSlots, describeSlots } from "../services/slots.js";
+import { radarRepo } from "../core/repos/radar.js";
+import { adaptContext, addRadarAccounts, putSponsor, radarCreators, radarFeed, radarInsights, saveRadarPost } from "../services/radar.js";
 import { formatLocal } from "../services/time.js";
 
 /** MCP istemcisine gösterilen genel kullanım talimatı */
@@ -787,6 +789,121 @@ export function buildMcpServer(ctx: Ctx): McpServer {
     },
     async (a) =>
       run(ctx, () => workflowRunsRepo.list(ctx.orgId, a.workflowId, a.limit ?? 20))
+  );
+
+  /* ----- İçerik radarı ----- */
+
+  const nicheIdOf = (name?: string) => {
+    if (!name) return null;
+    const n = radarRepo.nicheByName(ctx.orgId, name) ?? radarRepo.niche(ctx.orgId, name);
+    if (!n) throw new Error(`Unknown niche "${name}". Niches: ${radarRepo.niches(ctx.orgId).map((x) => x.name).join(", ") || "(none)"}`);
+    return n.id;
+  };
+  const RadarScopeShape = {
+    niche: z.string().optional().describe("Niche name, e.g. 'Almanca'"),
+    region: z.enum(["TR", "GLOBAL"]).optional().describe("TR = Turkey, GLOBAL = international accounts"),
+  };
+
+  server.registerTool(
+    "radar_viral_posts",
+    {
+      title: "Content radar: posts that worked · Tutan içerikler",
+      description:
+        "Posts from tracked Instagram accounts ranked by outlier score: the post's views (Reels) or likes+comments divided by the median of the SAME account's other posts (5 = five times its normal). Use it to find what is working in a niche. (TR: Nişte tutan gönderiler.)",
+      inputSchema: {
+        ...RadarScopeShape,
+        days: z.number().int().min(0).max(366).optional().describe("Look-back window in days (default 30, 0 = all)"),
+        kind: z.enum(["REEL", "CAROUSEL", "IMAGE", "VIDEO"]).optional(),
+        minOutlier: z.number().min(0).optional().describe("Minimum outlier score, e.g. 3"),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) =>
+      run(ctx, () => {
+        const r = radarFeed(ctx, { nicheId: nicheIdOf(a.niche), region: a.region ?? null, days: a.days ?? 30, kind: a.kind ?? null, minOutlier: a.minOutlier, limit: a.limit ?? 15 });
+        return {
+          total: r.total,
+          items: r.items.map((p) => ({ key: p.key, account: p.account.username, region: p.account.region, followers: p.account.followers, kind: p.kind, outlier: p.outlier, metric: p.metric, views: p.views, likes: p.likes, comments: p.comments, postedAt: p.postedAt, early: p.early, hook: p.hook, caption: p.caption.slice(0, 400), permalink: p.permalink })),
+        };
+      }),
+  );
+
+  server.registerTool(
+    "radar_creators",
+    {
+      title: "Content radar: creator ranking · Üretici sıralaması",
+      description: "Tracked creators ranked by radar score (0-100, compared within the niche: engagement rate, reach, 30-day growth, hit rate, frequency). Good for picking sponsorship candidates.",
+      inputSchema: { ...RadarScopeShape, sort: z.enum(["radar", "followers", "engagementRate", "growth", "views", "hitRate", "postsPerWeek"]).optional(), limit: z.number().int().min(1).max(100).optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) =>
+      run(ctx, () =>
+        radarCreators(ctx, { nicheId: nicheIdOf(a.niche), region: a.region ?? null, sort: a.sort ?? "radar" })
+          .slice(0, a.limit ?? 20)
+          .map((c) => ({ username: c.username, name: c.fullName, region: c.region, role: c.role, radarScore: c.radarScore, followers: c.followers, growth30: c.growth30, engagementRate: c.engagementRate, medianViews: c.medianViews, postsPerWeek: c.postsPerWeek, hitRate: c.hitRate, email: c.email, sponsorStatus: c.sponsorStatus, topPost: c.topPost, lastError: c.lastError })),
+      ),
+  );
+
+  server.registerTool(
+    "radar_insights",
+    {
+      title: "Content radar: niche insights · Niş içgörüleri",
+      description: "Which formats, posting times, hashtags and opening hooks perform best in the niche (scores relative to each account's own normal).",
+      inputSchema: { ...RadarScopeShape, days: z.number().int().min(7).max(366).optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) =>
+      run(ctx, () => {
+        const r = radarInsights(ctx, { nicheId: nicheIdOf(a.niche), region: a.region ?? null, days: a.days ?? 90 });
+        return { ...r, heatmap: undefined };
+      }),
+  );
+
+  server.registerTool(
+    "radar_add_accounts",
+    {
+      title: "Content radar: add accounts · Hesap ekle",
+      description: "Adds Instagram accounts (usernames or profile links) to the radar and scans them. Business/creator accounts are read through the workspace's Instagram connection; personal accounts need an Apify key in radar settings.",
+      inputSchema: {
+        usernames: z.array(z.string()).min(1).max(50),
+        niche: z.string().optional().describe("Niche name; created if missing"),
+        region: z.enum(["TR", "GLOBAL"]).optional(),
+        role: z.enum(["watch", "competitor", "own"]).optional(),
+      },
+    },
+    async (a) => run(ctx, () => addRadarAccounts(ctx, { usernames: a.usernames, nicheName: a.niche ?? null, region: a.region, role: a.role })),
+  );
+
+  server.registerTool(
+    "radar_adapt_context",
+    {
+      title: "Content radar: adaptation brief · Uyarlama bağlamı",
+      description:
+        "Returns the source post (caption, format, performance) to adapt for this brand. Write an ORIGINAL adaptation in the brand voice (never copy the caption or script), then save it with create_post as a draft if the user wants.",
+      inputSchema: { key: z.string().describe("Post key from radar_viral_posts") },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => run(ctx, () => adaptContext(ctx, a.key)),
+  );
+
+  server.registerTool(
+    "radar_save",
+    {
+      title: "Content radar: save idea or sponsor · Panoya / sponsor listesine ekle",
+      description: "Saves a radar post to the idea board (key) and/or marks a creator as a sponsorship candidate (sponsorUsername).",
+      inputSchema: {
+        key: z.string().optional(),
+        note: z.string().max(2000).optional(),
+        sponsorUsername: z.string().optional(),
+        sponsorStatus: z.enum(["candidate", "contacted", "offered", "agreed", "declined"]).optional(),
+      },
+    },
+    async (a) =>
+      run(ctx, () => ({
+        saved: a.key ? saveRadarPost(ctx, { key: a.key, note: a.note }) : null,
+        sponsor: a.sponsorUsername ? putSponsor(ctx, { username: a.sponsorUsername, status: a.sponsorStatus }) : null,
+      })),
   );
 
   /* ----- Hazır komutlar (Claude'da / menüsünde görünür) ----- */

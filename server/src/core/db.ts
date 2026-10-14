@@ -592,6 +592,106 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_mentions_query ON mentions(query_id, published_at);
     `,
   },
+  {
+    // İçerik radarı: nişteki hesapların gönderileri hesabın kendi normaline göre puanlanır (outlier); üretici sıralaması, pano, sponsor listesi
+    id: 19,
+    sql: `
+    CREATE TABLE IF NOT EXISTS radar_niches (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      color TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE (org_id, name)
+    );
+    CREATE TABLE IF NOT EXISTS radar_accounts (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      username TEXT NOT NULL,
+      niche_id TEXT REFERENCES radar_niches(id) ON DELETE SET NULL,
+      region TEXT NOT NULL DEFAULT 'TR',
+      role TEXT NOT NULL DEFAULT 'watch',
+      full_name TEXT,
+      biography TEXT,
+      avatar_url TEXT,
+      followers INTEGER,
+      following INTEGER,
+      media_count INTEGER,
+      website TEXT,
+      email TEXT,
+      is_business INTEGER,
+      last_source TEXT,
+      last_fetched_at TEXT,
+      last_error TEXT,
+      paused INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      UNIQUE (org_id, username)
+    );
+    CREATE TABLE IF NOT EXISTS radar_account_snapshots (
+      account_id TEXT NOT NULL REFERENCES radar_accounts(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      followers INTEGER,
+      media_count INTEGER,
+      PRIMARY KEY (account_id, date)
+    );
+    CREATE TABLE IF NOT EXISTS radar_posts (
+      account_id TEXT NOT NULL REFERENCES radar_accounts(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      org_id TEXT NOT NULL,
+      permalink TEXT,
+      kind TEXT NOT NULL,
+      caption TEXT NOT NULL DEFAULT '',
+      thumbnail_url TEXT,
+      posted_at TEXT,
+      likes INTEGER,
+      comments INTEGER,
+      views INTEGER,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      first_seen_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (account_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_posts_org ON radar_posts(org_id, posted_at);
+    CREATE TABLE IF NOT EXISTS radar_saved (
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      username TEXT NOT NULL,
+      permalink TEXT,
+      kind TEXT,
+      caption TEXT,
+      thumbnail_url TEXT,
+      outlier REAL,
+      status TEXT NOT NULL DEFAULT 'idea',
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (org_id, key)
+    );
+    CREATE TABLE IF NOT EXISTS radar_sponsors (
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      username TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'candidate',
+      note TEXT,
+      contact TEXT,
+      price TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (org_id, username)
+    );
+    CREATE TABLE IF NOT EXISTS radar_dismissed (
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      username TEXT NOT NULL,
+      at TEXT NOT NULL,
+      PRIMARY KEY (org_id, username)
+    );
+    CREATE TABLE IF NOT EXISTS radar_settings (
+      org_id TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+      apify_token TEXT,
+      apify_max_usd REAL,
+      updated_at TEXT NOT NULL
+    );
+    `,
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

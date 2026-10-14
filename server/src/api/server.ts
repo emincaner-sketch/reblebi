@@ -40,6 +40,7 @@ import { pushRoutes } from "./routes/push.js";
 import { hashtagRoutes } from "./routes/hashtags.js";
 import { listeningRoutes } from "./routes/listening.js";
 import { exportRoutes } from "./routes/export.js";
+import { radarRoutes } from "./routes/radar.js";
 
 const log = createLogger("http");
 
@@ -218,6 +219,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(hashtagRoutes);
   await app.register(listeningRoutes);
   await app.register(exportRoutes);
+  await app.register(radarRoutes);
   await app.register(adminRoutes);
 
   // Yüklenen medya (platformlar bu herkese açık URL'den çeker)
