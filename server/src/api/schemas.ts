@@ -116,6 +116,19 @@ const CommentRuleFields = {
   priority: z.coerce.number().int().min(0).max(10000),
 };
 
+/** Gelen kutusu otomasyon ayarları (MCP üzerinden): çıkış, devretme, karşılama, mesai dışı, gecikme */
+export const InboxSettingsSchema = z.object({
+  optOutKeywords: z.string().max(1000).optional(),
+  optOutReply: z.string().max(1000).optional(),
+  handoffKeywords: z.string().max(1000).optional(),
+  welcomeMessage: z.string().max(2000).optional(),
+  outsideHoursMessage: z.string().max(2000).optional(),
+  replyDelaySeconds: z.number().int().min(0).max(60).optional(),
+  aiAutoReplyFallback: z.boolean().optional(),
+});
+
+export const INBOX_SETTING_KEYS = ["optOutKeywords", "optOutReply", "handoffKeywords", "welcomeMessage", "outsideHoursMessage", "replyDelaySeconds", "aiAutoReplyFallback"] as const;
+
 /** Kişi kartı güncellemesi: etiketler, alanlar (ör. seviye, e-posta), çıkış listesi */
 export const ContactPatchSchema = z.object({
   tags: z.array(z.string().max(40)).max(20).optional(),

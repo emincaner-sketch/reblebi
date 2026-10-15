@@ -303,6 +303,17 @@ describe("uzaktan MCP (API anahtarı)", () => {
     assert.match(r.json.result.content[0].text, /görsel|video/i);
   });
 
+  test("gelen kutusu ayarları MCP'den okunur ve güncellenir", async () => {
+    const before = toolJson(await mcp(apiKey, "tools/call", { name: "get_inbox_settings", arguments: {} }, 30));
+    assert.match(before.optOutKeywords, /durdur/);
+    assert.equal(before.aiApiKeyEnc, undefined, "yalnızca gelen kutusu ayarları döner");
+    const after = toolJson(await mcp(apiKey, "tools/call", { name: "update_inbox_settings", arguments: { optOutReply: "Tamam, otomatik mesaj gelmeyecek." } }, 31));
+    assert.equal(after.optOutReply, "Tamam, otomatik mesaj gelmeyecek.");
+    assert.equal(after.optOutKeywords, before.optOutKeywords, "verilmeyen alan değişmez");
+    const bad = await mcp(apiKey, "tools/call", { name: "update_inbox_settings", arguments: { replyDelaySeconds: 999 } }, 32);
+    assert.equal(bad.json.result?.isError ?? Boolean(bad.json.error), true);
+  });
+
   test("yorumdan DM'e: MCP'den oluşan kural her zaman kapalıdır; doğrulama ve sayılar", async () => {
     const created = toolJson(
       await mcp(apiKey, "tools/call", { name: "create_comment_rule", arguments: { name: "Link DM", channelId: ig, pattern: "link*", dmText: "Merhaba {{name}}", enabled: 1 } }, 20),

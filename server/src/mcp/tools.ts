@@ -12,7 +12,7 @@ import { postsRepo } from "../core/repos/posts.js";
 import { workflowsRepo, workflowRunsRepo } from "../core/repos/workflows.js";
 import type { Ctx, PostStatus } from "../core/types.js";
 import { aiAvailable, draftReply, generateContent } from "../ai/index.js";
-import { CommentRulePatchSchema, CommentRuleSchema, ContactPatchSchema, RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
+import { CommentRulePatchSchema, CommentRuleSchema, ContactPatchSchema, INBOX_SETTING_KEYS, InboxSettingsSchema, RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
 import { requireRole } from "../services/access.js";
 import { createCommentRule, deleteCommentRule, listCommentRules, updateCommentRule } from "../services/comment-automation.js";
 import { getContact, updateContact } from "../services/contacts.js";
@@ -627,6 +627,40 @@ export function buildMcpServer(ctx: Ctx): McpServer {
         requireRole(ctx, "admin");
         rulesRepo.remove(ctx.orgId, a.ruleId);
         return { ok: true };
+      }),
+  );
+
+  /* ----- Gelen kutusu ayarları ----- */
+
+  const inboxSettings = () => {
+    const s = orgSettingsRepo.get(ctx.orgId);
+    return Object.fromEntries(INBOX_SETTING_KEYS.map((k) => [k, s[k]]));
+  };
+
+  server.registerTool(
+    "get_inbox_settings",
+    {
+      title: "Inbox automation settings · Gelen kutusu ayarları",
+      description:
+        "Opt-out keywords and confirmation reply, handoff keywords, welcome and outside-hours messages, reply delay and AI fallback. Keyword lists are comma-separated whole words (end with * for suffixes).",
+      annotations: { readOnlyHint: true },
+    },
+    async () => run(ctx, () => inboxSettings()),
+  );
+
+  server.registerTool(
+    "update_inbox_settings",
+    {
+      title: "Update inbox settings · Gelen kutusu ayarlarını güncelle",
+      description:
+        "Changes only the provided inbox automation settings. optOutReply is sent once when someone opts out (empty = nothing sent); people who write an optOutKeywords word never get automated messages again.",
+      inputSchema: InboxSettingsSchema.shape,
+    },
+    async (a) =>
+      run(ctx, () => {
+        requireRole(ctx, "admin");
+        orgSettingsRepo.set(ctx.orgId, InboxSettingsSchema.parse(a));
+        return inboxSettings();
       }),
   );
 
