@@ -11,7 +11,7 @@ import { aiAvailable, draftReply } from "../ai/index.js";
 import { getProvider, lookupParticipant, type InboundEvent } from "../providers/index.js";
 import { requireRole } from "./access.js";
 import { enqueueCommentDm, handleCommentButton } from "./comment-automation.js";
-import { matchesKeywords } from "./keyword-match.js";
+import { foldText, matchesKeywords, parseKeywordList } from "./keyword-match.js";
 import { sendDecisionFor } from "./messaging-policy.js";
 import { hasFeature } from "./limits.js";
 import { emitWebhook, notify, orgT } from "./notify.js";
@@ -36,7 +36,35 @@ function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => vars[k] ?? "");
 }
 
-export function ruleMatches(rule: Pick<AutoReplyRule, "matchType" | "pattern">, text: string, isFirstContact: boolean): boolean {
+/** Gelen olayın mesaj dışı tetikleyicileri: hikâye etkileşimi ve ig.me/m.me bağlantısı */
+export type RuleTrigger = Pick<InboundEvent, "story" | "referral">;
+
+/**
+ * Kişi bir şey yazmadıysa (hikâyede bahsetme ya da yalnızca bağlantıya tıklama) metin kuralları
+ * (her mesaj, kelime, regex, ilk temas) ve yedek yanıtlar çalışmaz; yalnızca kendi türündeki kurallar çalışır.
+ */
+export function isSignalOnly(t: RuleTrigger): boolean {
+  return t.story?.kind === "mention" || Boolean(t.referral?.clickOnly);
+}
+
+/** ref listesi: virgülle ayrılır, büyük/küçük harf ve Türkçe harf farkı yok sayılır; sonu * ise önek eşleşir; boşsa her ref */
+export function refMatches(pattern: string | null, ref: string): boolean {
+  const list = (pattern ?? "").split(",").map((p) => foldText(p.trim())).filter(Boolean);
+  if (!list.length) return true;
+  const value = foldText(ref.trim());
+  return list.some((p) => (p.endsWith("*") ? value.startsWith(p.replace(/\*+$/, "")) : value === p));
+}
+
+export function ruleMatches(rule: Pick<AutoReplyRule, "matchType" | "pattern">, text: string, isFirstContact: boolean, trigger: RuleTrigger = {}): boolean {
+  switch (rule.matchType) {
+    case "story_mention":
+      return trigger.story?.kind === "mention";
+    case "story_reply":
+      return trigger.story?.kind === "reply" && (!parseKeywordList(rule.pattern).length || matchesKeywords(rule.pattern, text));
+    case "ref":
+      return Boolean(trigger.referral) && refMatches(rule.pattern, trigger.referral!.ref);
+  }
+  if (isSignalOnly(trigger)) return false;
   switch (rule.matchType) {
     case "any":
       return true;
@@ -235,9 +263,16 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
     return;
   }
 
+  // Bağlantıdan gelen kişinin ref'i kişi kartına yazılır (son gelinen bağlantı)
+  if (ev.referral) {
+    const cur = contactsRepo.get(channel.id, conversation.participantId);
+    contactsRepo.upsert(channel.orgId, channel.id, conversation.participantId, { fields: { ...(cur?.fields ?? {}), ref: ev.referral.ref } });
+  }
+
   const delay = Math.max(0, Math.min(settings.replyDelaySeconds, 60)) * 1000;
+  const trigger: RuleTrigger = { story: ev.story, referral: ev.referral };
   setTimeout(() => {
-    autoRespond(channel, conversation.id, message).catch((e) => log.error("oto-yanıt hatası", { e: e instanceof Error ? e.message : e }));
+    autoRespond(channel, conversation.id, message, trigger).catch((e) => log.error("oto-yanıt hatası", { e: e instanceof Error ? e.message : e }));
   }, delay);
 }
 
@@ -261,7 +296,7 @@ async function aiReply(channel: Channel, conversation: Conversation, instruction
   });
 }
 
-async function autoRespond(channel: Channel, conversationId: string, inbound: Message): Promise<void> {
+async function autoRespond(channel: Channel, conversationId: string, inbound: Message, trigger: RuleTrigger = {}): Promise<void> {
   const conversation = inboxRepo.getConversationById(conversationId);
   if (!conversation || conversation.mode === "manual") return;
   const org = orgsRepo.get(channel.orgId);
@@ -279,7 +314,7 @@ async function autoRespond(channel: Channel, conversationId: string, inbound: Me
 
   for (const rule of rules) {
     if (rule.onlyBusinessHours && !withinHours) continue;
-    if (!ruleMatches(rule, inbound.text, isFirstContact)) continue;
+    if (!ruleMatches(rule, inbound.text, isFirstContact, trigger)) continue;
     if (inboxRepo.ruleHitRecently(rule.id, conversation.id, rule.cooldownMinutes)) continue;
 
     let replyText = "";
@@ -304,6 +339,12 @@ async function autoRespond(channel: Channel, conversationId: string, inbound: Me
       inboxRepo.flagAttention(conversation.id, true);
     }
     return; // ilk eşleşen kural kazanır
+  }
+
+  // Hikâyede bahsetme / bağlantı tıklaması kurala uymadıysa: cevaplanacak bir mesaj yok, ekip görür
+  if (isSignalOnly(trigger)) {
+    inboxRepo.flagAttention(conversation.id, true);
+    return;
   }
 
   if (!withinHours && settings.outsideHoursMessage) {

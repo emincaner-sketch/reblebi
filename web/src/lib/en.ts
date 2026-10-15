@@ -2350,4 +2350,12 @@ export const EN: Record<string, string> = {
   "Jeton": "Token",
   "Yönetim": "Admin",
   "Senkron": "Sync",
+  "Hikâyede Bahsetme (Instagram)": "Story Mention (Instagram)",
+  "Hikâyeye Cevap (Instagram)": "Story Reply (Instagram)",
+  "Bağlantı (ig.me / m.me ref)": "Link (ig.me / m.me ref)",
+  "Biri hikâyesinde hesabını etiketlediğinde çalışır. Kişi bir şey yazmadığı için \"Her Mesaj\" ve kelime kuralları bu olayda çalışmaz.": "Runs when someone tags your account in their story. Since the person didn't write anything, \"Every Message\" and keyword rules don't run for this event.",
+  "Anahtar Kelimeler (isteğe bağlı)": "Keywords (optional)",
+  "Boş bırakırsan hikâyene gelen her cevapta çalışır.": "Leave empty to run on every reply to your story.",
+  "Ref değerleri (virgülle ayırın)": "Ref values (comma-separated)",
+  "Bağlantı örneği: ig.me/m/hesabin?ref=yds_ekim. Sonuna * koyarsan o harflerle başlayan her ref uyar; boşsa her ref. Ref değeri kişi kartına \"ref\" alanı olarak yazılır.": "Example link: ig.me/m/youraccount?ref=yds_oct. End with * to match every ref starting with those letters; empty matches any ref. The ref is saved to the contact card as the \"ref\" field.",
 };

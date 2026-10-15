@@ -328,7 +328,7 @@ export interface Rule {
   enabled: number;
   channelId: string | null;
   provider: ProviderId | null;
-  matchType: "any" | "first_contact" | "keyword" | "regex";
+  matchType: "any" | "first_contact" | "keyword" | "regex" | "story_mention" | "story_reply" | "ref";
   pattern: string | null;
   replyMode: "template" | "ai";
   replyText: string | null;

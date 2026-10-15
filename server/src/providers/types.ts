@@ -95,6 +95,10 @@ export interface InboundEvent {
   metadata?: Record<string, unknown>;
   /** Düğmeye (postback) ya da hızlı cevaba basıldıysa: gönderdiğimiz payload ve düğme başlığı */
   postback?: { payload: string; title: string };
+  /** Instagram hikâyesi: kişi hikâyesinde hesabı etiketledi (mention) ya da hesabın hikâyesine cevap yazdı (reply) */
+  story?: { kind: "mention" | "reply"; id?: string | null; url?: string | null };
+  /** ig.me / m.me bağlantısındaki ref değeri (ör. ig.me/m/hesap?ref=kampanya); source: Meta'nın bildirdiği kaynak; clickOnly: kişi bir şey yazmadı, yalnızca bağlantıya tıkladı */
+  referral?: { ref: string; source?: string | null; clickOnly?: boolean };
 }
 
 export interface SendMessageInput {

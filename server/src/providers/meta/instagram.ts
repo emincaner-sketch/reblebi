@@ -348,7 +348,7 @@ export const IG_LOGIN_SCOPES = [
 ];
 
 /** Instagram ile giriş hesabı için abone olunan webhook alanları */
-export const IG_WEBHOOK_FIELDS = "messages,messaging_postbacks,message_reactions,comments,live_comments";
+export const IG_WEBHOOK_FIELDS = "messages,messaging_postbacks,messaging_referral,message_reactions,comments,live_comments";
 
 const log = createLogger("instagram");
 

@@ -253,7 +253,11 @@ export interface Message {
   createdAt: string;
 }
 
-export type RuleMatch = "any" | "first_contact" | "keyword" | "regex";
+/**
+ * Kural tetikleyicisi. story_mention: hikâyede bahsetme; story_reply: hikâyeye cevap (pattern doluysa kelime de aranır);
+ * ref: ig.me/m.me bağlantısındaki ref değeri (pattern: virgülle ayrılmış ref listesi, boşsa her ref)
+ */
+export type RuleMatch = "any" | "first_contact" | "keyword" | "regex" | "story_mention" | "story_reply" | "ref";
 export type RuleReplyMode = "template" | "ai";
 
 export interface AutoReplyRule {

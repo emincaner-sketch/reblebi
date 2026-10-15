@@ -62,7 +62,7 @@ const RuleFields = {
   enabled: z.coerce.number().int().min(0).max(1),
   channelId: z.string().nullable(),
   provider: z.enum(["instagram", "facebook", "threads", "whatsapp", "x", "linkedin", "tiktok", "youtube", "telegram"]).nullable(),
-  matchType: z.enum(["any", "first_contact", "keyword", "regex"]),
+  matchType: z.enum(["any", "first_contact", "keyword", "regex", "story_mention", "story_reply", "ref"]),
   pattern: z.string().max(500).nullable(),
   replyMode: z.enum(["template", "ai"]),
   replyText: z.string().max(4000).nullable(),

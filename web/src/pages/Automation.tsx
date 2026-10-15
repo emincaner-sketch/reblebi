@@ -78,6 +78,17 @@ const EMPTY_RULE: Omit<Rule, "id"> = {
   handoffToHuman: 0,
 };
 
+/** Kural listesinde tetikleyici adı */
+const MATCH_LABELS: Record<string, string> = {
+  keyword: "Anahtar Kelime",
+  first_contact: "İlk Temas (Hoş Geldin)",
+  any: "Her Mesaj",
+  regex: "Regex",
+  story_mention: "Hikâyede Bahsetme (Instagram)",
+  story_reply: "Hikâyeye Cevap (Instagram)",
+  ref: "Bağlantı (ig.me / m.me ref)",
+};
+
 const TRIGGER_LABELS: Record<WorkflowTriggerType, { title: string; desc: string; icon: any; color: string }> = {
   "webhook.inbound": { title: "Gelen Özel Webhook (Catch Hook)", desc: "Benzersiz bir URL'ye POST/GET isteği geldiğinde tetiklenir (Genel Webhook)", icon: Webhook, color: "var(--accent)" },
   "shopify.order_created": { title: "Shopify: Yeni Sipariş Oluştu", desc: "Shopify mağazanızda yeni bir sipariş verildiğinde veya ödendiğinde tetiklenir", icon: ShoppingCart, color: "var(--ok)" },
@@ -648,7 +659,7 @@ export default function AutomationPage() {
                         <strong>{r.name}</strong>
                       </td>
                       <td>
-                        <span className="badge small">{r.matchType}</span>
+                        <span className="badge small">{MATCH_LABELS[r.matchType] ? t(MATCH_LABELS[r.matchType]) : r.matchType}</span>
                         {r.pattern && <div className="muted small pre">{r.pattern}</div>}
                       </td>
                       <td>
@@ -2029,6 +2040,9 @@ export default function AutomationPage() {
                   <option value="first_contact">{t("İlk Temas (Hoş Geldin)")}</option>
                   <option value="any">{t("Her Mesaj")}</option>
                   <option value="regex">Regex</option>
+                  <option value="story_mention">{t("Hikâyede Bahsetme (Instagram)")}</option>
+                  <option value="story_reply">{t("Hikâyeye Cevap (Instagram)")}</option>
+                  <option value="ref">{t("Bağlantı (ig.me / m.me ref)")}</option>
                 </select>
               </div>
               <div className="field">
@@ -2041,6 +2055,38 @@ export default function AutomationPage() {
                 />
               </div>
             </div>
+
+            {editingRule.matchType === "story_mention" && (
+              <span className="help">{t("Biri hikâyesinde hesabını etiketlediğinde çalışır. Kişi bir şey yazmadığı için \"Her Mesaj\" ve kelime kuralları bu olayda çalışmaz.")}</span>
+            )}
+
+            {editingRule.matchType === "story_reply" && (
+              <div className="field">
+                <label>{t("Anahtar Kelimeler (isteğe bağlı)")}</label>
+                <input
+                  className="input"
+                  value={editingRule.pattern ?? ""}
+                  onChange={(e) => setEditingRule({ ...editingRule, pattern: e.target.value })}
+                  placeholder="fiyat*, link"
+                />
+                <span className="help">{t("Boş bırakırsan hikâyene gelen her cevapta çalışır.")}</span>
+              </div>
+            )}
+
+            {editingRule.matchType === "ref" && (
+              <div className="field">
+                <label>{t("Ref değerleri (virgülle ayırın)")}</label>
+                <input
+                  className="input"
+                  value={editingRule.pattern ?? ""}
+                  onChange={(e) => setEditingRule({ ...editingRule, pattern: e.target.value })}
+                  placeholder="yds_ekim, kampanya*"
+                />
+                <span className="help">
+                  {t("Bağlantı örneği: ig.me/m/hesabin?ref=yds_ekim. Sonuna * koyarsan o harflerle başlayan her ref uyar; boşsa her ref. Ref değeri kişi kartına \"ref\" alanı olarak yazılır.")}
+                </span>
+              </div>
+            )}
 
             {editingRule.matchType === "keyword" && (
               <div className="field">

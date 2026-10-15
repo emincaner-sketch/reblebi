@@ -596,7 +596,7 @@ export function buildMcpServer(ctx: Ctx): McpServer {
     "create_rule",
     {
       title: "Create auto-reply rule · Kural ekle",
-      description: "matchType: keyword (comma-separated words or phrases, matched as whole words, case- and Turkish-accent-insensitive; end a word with * to also match suffixed forms, e.g. fiyat*), regex, first_contact or any. replyMode template uses replyText ({{name}} placeholder); ai uses aiInstructions. Lower priority runs first.",
+      description: "matchType: keyword (comma-separated words or phrases, matched as whole words, case- and Turkish-accent-insensitive; end a word with * to also match suffixed forms, e.g. fiyat*), regex, first_contact, any, story_mention (someone mentions the Instagram account in their story), story_reply (someone replies to the account's story; optional keyword pattern), or ref (person opened the DM from an ig.me/m.me link with ?ref=...; pattern = comma-separated ref values, end with * for prefix, empty = any ref; the ref is also saved to the contact's 'ref' field). Story mentions and link-only clicks never trigger text rules (any/keyword/regex/first_contact). replyMode template uses replyText ({{name}} placeholder); ai uses aiInstructions. Lower priority runs first.",
       inputSchema: RuleSchema.shape,
     },
     async (a) =>
