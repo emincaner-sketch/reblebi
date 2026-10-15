@@ -95,6 +95,10 @@ export interface InboundEvent {
   metadata?: Record<string, unknown>;
   /** Düğmeye (postback) ya da hızlı cevaba basıldıysa: gönderdiğimiz payload ve düğme başlığı */
   postback?: { payload: string; title: string };
+  /** Instagram hikâyesi: kişi hikâyesinde hesabı etiketledi (mention) ya da hesabın hikâyesine cevap yazdı (reply) */
+  story?: { kind: "mention" | "reply"; id?: string | null; url?: string | null };
+  /** ig.me / m.me bağlantısındaki ref değeri (ör. ig.me/m/hesap?ref=kampanya); source: Meta'nın bildirdiği kaynak; clickOnly: kişi bir şey yazmadı, yalnızca bağlantıya tıkladı */
+  referral?: { ref: string; source?: string | null; clickOnly?: boolean };
 }
 
 export interface SendMessageInput {
@@ -158,12 +162,23 @@ export interface Provider {
   publishComment?(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null): Promise<{ externalId: string }>;
   /** Gönderi yorumuna özel DM (private reply, recipient: comment_id): yorum başına tek mesaj, yorumdan sonraki 7 gün içinde */
   sendPrivateReply?(channel: Channel, commentId: string, message: OutboundMessage): Promise<{ externalId?: string | null }>;
+  /**
+   * Sohbet menüsü (Messenger Profile API): ice breakers ve sabit menü. Boş liste Meta'daki ayarı kaldırır.
+   * Ice breakers en fazla 4 soru; sabit menü en fazla 20 öğe.
+   */
+  setMessengerProfile?(channel: Channel, profile: MessengerProfileInput): Promise<void>;
   /** Kanal sağlığı: token geçerli mi */
   healthCheck?(channel: Channel): Promise<{ ok: boolean; detail?: string }>;
 }
 
 /** Mesaj düğmesi: postback (basınca webhook'a payload gelir) ya da bağlantı */
 export type MessageButton = { type: "postback"; title: string; payload: string } | { type: "web_url"; title: string; url: string };
+
+/** Sohbet menüsü: ice breaker soruları (basınca payload gelir) ve sabit menü düğmeleri */
+export interface MessengerProfileInput {
+  iceBreakers: Array<{ question: string; payload: string }>;
+  menu: MessageButton[];
+}
 
 /** Hızlı cevap: mesajın altında çıkan, basınca metni gönderen kısa seçenek */
 export interface QuickReply {

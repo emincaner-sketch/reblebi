@@ -772,6 +772,21 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_contacts_org ON contacts(org_id);
     `,
   },
+  {
+    // Sohbet menüsü: kanal başına ice breakers ve sabit menü (Meta Messenger Profile API'ye gönderilir)
+    id: 23,
+    sql: `
+    CREATE TABLE IF NOT EXISTS dm_profiles (
+      channel_id TEXT PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+      org_id TEXT NOT NULL,
+      ice_breakers TEXT NOT NULL DEFAULT '[]',
+      menu TEXT NOT NULL DEFAULT '[]',
+      synced_at TEXT,
+      sync_error TEXT,
+      updated_at TEXT NOT NULL
+    );
+    `,
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

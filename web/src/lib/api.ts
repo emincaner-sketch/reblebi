@@ -328,7 +328,7 @@ export interface Rule {
   enabled: number;
   channelId: string | null;
   provider: ProviderId | null;
-  matchType: "any" | "first_contact" | "keyword" | "regex";
+  matchType: "any" | "first_contact" | "keyword" | "regex" | "story_mention" | "story_reply" | "ref";
   pattern: string | null;
   replyMode: "template" | "ai";
   replyText: string | null;
@@ -359,6 +359,23 @@ export interface CommentRule {
 }
 
 export type PrivateReplyStatus = "queued" | "sending" | "sent" | "failed" | "skipped" | "expired";
+
+/** Sohbet menüsü öğesi: basınca gidecek cevap ya da bağlantı (bağlantı yalnızca sabit menüde) */
+export interface DmProfileItem {
+  title: string;
+  replyText?: string | null;
+  url?: string | null;
+}
+
+/** Kanalın sohbet menüsü: hazır sorular (ice breakers) ve sabit menü (sunucudaki DmProfile ile aynı) */
+export interface DmProfile {
+  channelId: string;
+  iceBreakers: DmProfileItem[];
+  menu: DmProfileItem[];
+  syncedAt: string | null;
+  syncError: string | null;
+  updatedAt: string | null;
+}
 
 export interface PrivateReply {
   channelId: string;

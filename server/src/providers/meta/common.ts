@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { config } from "../../core/config.js";
 import { http, sleep } from "../http.js";
-import { ProviderError, type ConnectedAccount, type OAuthStart, type OutboundMessage } from "../types.js";
+import { ProviderError, type ConnectedAccount, type MessengerProfileInput, type OAuthStart, type OutboundMessage } from "../types.js";
 
 export const GRAPH = () => `https://graph.facebook.com/${config.meta.graphVersion}`;
 /** Instagram Login ile bağlanan hesaplar graph.facebook.com yerine graph.instagram.com'a gider */
@@ -249,6 +249,53 @@ export async function sendCommentPrivateReply(accountId: string, token: string, 
     base,
   });
   return r.message_id ?? null;
+}
+
+/** Messenger Profile sınırları (Instagram ve Messenger) */
+export const PROFILE_LIMITS = { iceBreakers: 4, questionChars: 80, menuItems: 20, menuTitleChars: 30, payloadChars: 1000 } as const;
+
+/**
+ * Sohbet menüsünü Meta'ya yazar: /{hesap}/messenger_profile.
+ * Dolu alanlar POST ile ayarlanır, boş alanlar DELETE ile kaldırılır.
+ * Instagram'da platform=instagram gider. Messenger'da sabit menü için "Başlarken" düğmesi gerekir; menü varsa o da ayarlanır.
+ */
+export async function syncMessengerProfile(
+  accountPath: string,
+  token: string,
+  profile: MessengerProfileInput,
+  opts: { base?: string; platform?: "instagram"; getStarted?: boolean } = {},
+): Promise<void> {
+  const L = PROFILE_LIMITS;
+  if (profile.iceBreakers.length > L.iceBreakers) throw new ProviderError(`En fazla ${L.iceBreakers} hazır soru eklenebilir`, 400);
+  if (profile.menu.length > L.menuItems) throw new ProviderError(`Sabit menüde en fazla ${L.menuItems} öğe olabilir`, 400);
+  for (const q of profile.iceBreakers) {
+    if (!q.question.trim() || q.question.length > L.questionChars) throw new ProviderError(`Hazır soru 1-${L.questionChars} karakter olmalı: "${q.question}"`, 400);
+    if (!q.payload || q.payload.length > L.payloadChars) throw new ProviderError("Hazır soru payload'ı geçersiz", 400);
+  }
+  for (const b of profile.menu) {
+    if (!b.title.trim() || b.title.length > L.menuTitleChars) throw new ProviderError(`Menü başlığı 1-${L.menuTitleChars} karakter olmalı: "${b.title}"`, 400);
+    if (b.type === "web_url" && !/^https:\/\//.test(b.url)) throw new ProviderError(`Bağlantı https:// ile başlamalı: ${b.url}`, 400);
+    if (b.type === "postback" && (!b.payload || b.payload.length > L.payloadChars)) throw new ProviderError("Menü payload'ı geçersiz", 400);
+  }
+
+  const set: Record<string, unknown> = {};
+  const remove: string[] = [];
+  if (profile.iceBreakers.length)
+    set.ice_breakers = [{ locale: "default", call_to_actions: profile.iceBreakers.map((q) => ({ question: q.question, payload: q.payload })) }];
+  else remove.push("ice_breakers");
+  if (profile.menu.length) {
+    set.persistent_menu = [
+      {
+        locale: "default",
+        call_to_actions: profile.menu.map((b) => (b.type === "web_url" ? { type: "web_url", title: b.title, url: b.url } : { type: "postback", title: b.title, payload: b.payload })),
+      },
+    ];
+    if (opts.getStarted) set.get_started = { payload: "GET_STARTED" };
+  } else remove.push("persistent_menu");
+
+  const path = `${accountPath}/messenger_profile`;
+  if (Object.keys(set).length) await graph(path, token, { method: "POST", params: { platform: opts.platform, ...set }, base: opts.base });
+  if (remove.length) await graph(path, token, { method: "DELETE", params: { platform: opts.platform, fields: remove }, base: opts.base });
 }
 
 /** Meta signed_request: base64url(imza).base64url(json), HMAC-SHA256(app secret) */

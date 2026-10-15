@@ -6,6 +6,13 @@ export interface ParsedMetaEvent extends InboundEvent {
   provider: ProviderId;
 }
 
+/** ig.me / m.me bağlantısı ya da reklam: ref değeri ve kaynağı */
+interface MetaReferral {
+  ref?: string;
+  source?: string;
+  type?: string;
+}
+
 interface MessagingEntry {
   sender?: { id: string };
   recipient?: { id: string };
@@ -16,9 +23,15 @@ interface MessagingEntry {
     is_echo?: boolean;
     quick_reply?: { payload?: string };
     attachments?: Array<{ type: string; payload?: { url?: string; title?: string } }>;
+    /** Hikâyeye cevap (Instagram) */
+    reply_to?: { mid?: string; story?: { id?: string; url?: string } };
+    /** Bağlantıdan gelip ilk mesajı yazdıysa (yeni konuşma) */
+    referral?: MetaReferral;
   };
-  /** Düğmeye basma (Messenger ve Instagram) */
-  postback?: { mid?: string; title?: string; payload?: string };
+  /** Düğmeye basma (Messenger ve Instagram); "Başlarken" düğmesinde bağlantının ref'i de gelir */
+  postback?: { mid?: string; title?: string; payload?: string; referral?: MetaReferral };
+  /** Var olan konuşmada ig.me / m.me bağlantısına tıklama (messaging_referral) */
+  referral?: MetaReferral;
 }
 
 interface WebhookBody {
@@ -69,6 +82,21 @@ function attachmentsToText(atts: Array<{ type: string; payload?: { url?: string;
 }
 
 type Entry = NonNullable<WebhookBody["entry"]>[number];
+
+/** ref değeri: kırpılır, boşsa yok sayılır (Meta en fazla 2083 karakter gönderir; 200'de kesilir) */
+function toReferral(r: MetaReferral | undefined): ParsedMetaEvent["referral"] {
+  const ref = r?.ref?.trim();
+  return ref ? { ref: ref.slice(0, 200), source: r?.source ?? null } : undefined;
+}
+
+/** Hikâyede bahsetme (ek türü story_mention) ya da hikâyeye cevap (reply_to.story) */
+function toStory(message: NonNullable<MessagingEntry["message"]>): ParsedMetaEvent["story"] {
+  const mention = message.attachments?.find((a) => a.type === "story_mention");
+  if (mention) return { kind: "mention", id: null, url: mention.payload?.url ?? null };
+  const story = message.reply_to?.story;
+  if (story) return { kind: "reply", id: story.id ?? null, url: story.url ?? null };
+  return undefined;
+}
 
 /**
  * Gönderi yorumları: her (gönderi, yorumcu) çifti gelen kutusunda bir konu olur ("c:<gönderi>:<yorumcu>").
@@ -134,12 +162,29 @@ export function parseMetaWebhook(body: WebhookBody): ParsedMetaEvent[] {
             externalMessageId: m.postback.mid ?? null,
             text: title,
             postback: { payload: m.postback.payload, title },
+            referral: toReferral(m.postback.referral),
+            receivedAt: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+          });
+          continue;
+        }
+        // Bağlantıya tıklama: mesaj kimliği yok; tekrar eden webhook'u ayırmak için gönderen + zamandan kimlik
+        const referral = toReferral(m.referral);
+        if (referral && !m.message && m.sender?.id) {
+          out.push({
+            provider,
+            accountExternalId: m.recipient?.id ?? entry.id,
+            conversationExternalId: m.sender.id,
+            participantId: m.sender.id,
+            externalMessageId: `ref:${m.sender.id}:${m.timestamp ?? entry.time ?? ""}`,
+            text: `[bağlantı: ${referral.ref}]`,
+            referral: { ...referral, clickOnly: true },
             receivedAt: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
           });
           continue;
         }
         if (!m.message || m.message.is_echo || !m.sender?.id) continue;
-        const text = m.message.text ?? attachmentsToText(m.message.attachments);
+        const story = toStory(m.message);
+        const text = m.message.text ?? (story?.kind === "mention" ? "[hikâyede bahsetti]" : attachmentsToText(m.message.attachments));
         out.push({
           provider,
           accountExternalId: m.recipient?.id ?? entry.id,
@@ -149,6 +194,8 @@ export function parseMetaWebhook(body: WebhookBody): ParsedMetaEvent[] {
           text,
           attachments: (m.message.attachments ?? []).map((a) => ({ type: a.type, url: a.payload?.url, name: a.payload?.title })),
           postback: m.message.quick_reply?.payload ? { payload: m.message.quick_reply.payload, title: text } : undefined,
+          story,
+          referral: toReferral(m.message.referral),
           receivedAt: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
         });
       }

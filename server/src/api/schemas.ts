@@ -62,7 +62,7 @@ const RuleFields = {
   enabled: z.coerce.number().int().min(0).max(1),
   channelId: z.string().nullable(),
   provider: z.enum(["instagram", "facebook", "threads", "whatsapp", "x", "linkedin", "tiktok", "youtube", "telegram"]).nullable(),
-  matchType: z.enum(["any", "first_contact", "keyword", "regex"]),
+  matchType: z.enum(["any", "first_contact", "keyword", "regex", "story_mention", "story_reply", "ref"]),
   pattern: z.string().max(500).nullable(),
   replyMode: z.enum(["template", "ai"]),
   replyText: z.string().max(4000).nullable(),
@@ -128,6 +128,18 @@ export const InboxSettingsSchema = z.object({
 });
 
 export const INBOX_SETTING_KEYS = ["optOutKeywords", "optOutReply", "handoffKeywords", "welcomeMessage", "outsideHoursMessage", "replyDelaySeconds", "aiAutoReplyFallback"] as const;
+
+/** Sohbet menüsü: hazır sorular (en fazla 4, 80 karakter) ve sabit menü (en fazla 20, başlık 30 karakter) */
+const DmProfileItemSchema = (titleMax: number) =>
+  z.object({
+    title: z.string().trim().min(1).max(titleMax),
+    replyText: z.string().trim().max(900).nullable().optional(),
+    url: z.string().trim().url().max(2000).nullable().optional(),
+  });
+export const DmProfileSchema = z.object({
+  iceBreakers: z.array(DmProfileItemSchema(80)).max(4).default([]),
+  menu: z.array(DmProfileItemSchema(30)).max(20).default([]),
+});
 
 /** Kişi kartı güncellemesi: etiketler, alanlar (ör. seviye, e-posta), çıkış listesi */
 export const ContactPatchSchema = z.object({
