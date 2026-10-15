@@ -116,6 +116,18 @@ const CommentRuleFields = {
   priority: z.coerce.number().int().min(0).max(10000),
 };
 
+/** Sohbet menüsü: hazır sorular (en fazla 4, 80 karakter) ve sabit menü (en fazla 20, başlık 30 karakter) */
+const DmProfileItemSchema = (titleMax: number) =>
+  z.object({
+    title: z.string().trim().min(1).max(titleMax),
+    replyText: z.string().trim().max(900).nullable().optional(),
+    url: z.string().trim().url().max(2000).nullable().optional(),
+  });
+export const DmProfileSchema = z.object({
+  iceBreakers: z.array(DmProfileItemSchema(80)).max(4).default([]),
+  menu: z.array(DmProfileItemSchema(30)).max(20).default([]),
+});
+
 /** Kişi kartı güncellemesi: etiketler, alanlar (ör. seviye, e-posta), çıkış listesi */
 export const ContactPatchSchema = z.object({
   tags: z.array(z.string().max(40)).max(20).optional(),

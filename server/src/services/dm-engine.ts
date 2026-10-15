@@ -11,6 +11,7 @@ import { aiAvailable, draftReply } from "../ai/index.js";
 import { getProvider, lookupParticipant, type InboundEvent } from "../providers/index.js";
 import { requireRole } from "./access.js";
 import { enqueueCommentDm, handleCommentButton } from "./comment-automation.js";
+import { handleProfileButton } from "./dm-profile.js";
 import { foldText, matchesKeywords, parseKeywordList } from "./keyword-match.js";
 import { sendDecisionFor } from "./messaging-policy.js";
 import { hasFeature } from "./limits.js";
@@ -251,6 +252,8 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
 
   // Yorumdan DM'e düğmesine basıldıysa tanımlı cevap gider; DM kuralları ayrıca çalışmaz
   if (ev.postback && (await handleCommentButton(channel, conversation, ev.postback.payload, (text, ruleId) => sendReply(channel, conversation, text, "rule", ruleId)))) return;
+  // Sohbet menüsü: hazır soruya ya da sabit menü öğesine basıldıysa öğenin cevabı gider (cevap boşsa kurallar çalışır)
+  if (ev.postback && (await handleProfileButton(channel, conversation, ev.postback, (text) => sendReply(channel, conversation, text, "rule")))) return;
 
   if (containsHandoffKeyword(message.text, settings)) {
     inboxRepo.setMode(conversation.id, "manual");

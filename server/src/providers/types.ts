@@ -162,12 +162,23 @@ export interface Provider {
   publishComment?(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null): Promise<{ externalId: string }>;
   /** Gönderi yorumuna özel DM (private reply, recipient: comment_id): yorum başına tek mesaj, yorumdan sonraki 7 gün içinde */
   sendPrivateReply?(channel: Channel, commentId: string, message: OutboundMessage): Promise<{ externalId?: string | null }>;
+  /**
+   * Sohbet menüsü (Messenger Profile API): ice breakers ve sabit menü. Boş liste Meta'daki ayarı kaldırır.
+   * Ice breakers en fazla 4 soru; sabit menü en fazla 20 öğe.
+   */
+  setMessengerProfile?(channel: Channel, profile: MessengerProfileInput): Promise<void>;
   /** Kanal sağlığı: token geçerli mi */
   healthCheck?(channel: Channel): Promise<{ ok: boolean; detail?: string }>;
 }
 
 /** Mesaj düğmesi: postback (basınca webhook'a payload gelir) ya da bağlantı */
 export type MessageButton = { type: "postback"; title: string; payload: string } | { type: "web_url"; title: string; url: string };
+
+/** Sohbet menüsü: ice breaker soruları (basınca payload gelir) ve sabit menü düğmeleri */
+export interface MessengerProfileInput {
+  iceBreakers: Array<{ question: string; payload: string }>;
+  menu: MessageButton[];
+}
 
 /** Hızlı cevap: mesajın altında çıkan, basınca metni gönderen kısa seçenek */
 export interface QuickReply {

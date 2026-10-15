@@ -315,6 +315,26 @@ export interface CommentRuleButton {
 /** Giden mesaj düğmesi (sağlayıcıdaki MessageButton ile aynı biçim) */
 export type DmButton = { type: "postback"; title: string; payload: string } | { type: "web_url"; title: string; url: string };
 
+/** Sohbet menüsü öğesi: basınca gidecek cevap (replyText; boşsa normal DM kuralları cevaplar) ya da bağlantı (url, yalnızca sabit menüde) */
+export interface DmProfileItem {
+  title: string;
+  replyText?: string | null;
+  url?: string | null;
+}
+
+/** Kanalın sohbet menüsü (Messenger Profile): sohbet açılınca çıkan hazır sorular (ice breakers) ve sabit menü */
+export interface DmProfile {
+  channelId: string;
+  orgId: string;
+  iceBreakers: DmProfileItem[];
+  menu: DmProfileItem[];
+  /** Meta'ya son başarılı gönderim zamanı */
+  syncedAt: string | null;
+  /** Son gönderim hatası (başarılıysa null) */
+  syncError: string | null;
+  updatedAt: string | null;
+}
+
 /** Kişi kartı: bir kanalda mesajlaşan kişi */
 export interface Contact {
   channelId: string;

@@ -165,6 +165,12 @@ const tr: Dict = {
   "comment_rule.button_kind": "Her düğme ya bir bağlantı ya da basınca gidecek bir cevap içermeli (ikisi birden değil)",
   "comment_rule.button_url": "Düğme bağlantısı https:// ile başlamalı",
   "comment_rule.button_text": "Düğmeli DM en fazla 640 karakter olabilir (otomatik mesaj notu dahil)",
+  "dm_profile.provider": "Sohbet menüsü yalnızca Instagram ve Facebook kanallarında çalışır",
+  "dm_profile.ice_breakers": "En fazla 4 hazır soru eklenebilir",
+  "dm_profile.ice_breaker_chars": "Hazır soru en fazla 80 karakter olabilir",
+  "dm_profile.menu": "Sabit menüde en fazla 20 öğe olabilir",
+  "dm_profile.menu_chars": "Menü başlığı en fazla 30 karakter olabilir",
+  "dm_profile.url": "Menü bağlantısı https:// ile başlamalı",
 
   // AI
   "ai.disabled": "AI yapılandırılmamış. Ayarlar > AI bölümünden sağlayıcı ve anahtar ekle.",
@@ -355,6 +361,12 @@ const en: Dict = {
   "comment_rule.button_kind": "Each button needs either a link or a reply to send when tapped (not both)",
   "comment_rule.button_url": "Button links must start with https://",
   "comment_rule.button_text": "A DM with buttons can be at most 640 characters (including the automatic-message note)",
+  "dm_profile.provider": "The chat menu only works on Instagram and Facebook channels",
+  "dm_profile.ice_breakers": "You can add up to 4 ice breaker questions",
+  "dm_profile.ice_breaker_chars": "An ice breaker question can be at most 80 characters",
+  "dm_profile.menu": "The persistent menu can have at most 20 items",
+  "dm_profile.menu_chars": "A menu title can be at most 30 characters",
+  "dm_profile.url": "Menu links must start with https://",
 
   "ai.disabled": "AI is not configured. Add a provider and key under Settings > AI.",
   "ai.refused": "The model declined this request",

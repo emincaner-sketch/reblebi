@@ -10,10 +10,11 @@ import { aiAvailable, draftReply, summarizeConversations } from "../../ai/index.
 import { requireRole } from "../../services/access.js";
 import { createCommentRule, deleteCommentRule, listCommentRules, updateCommentRule } from "../../services/comment-automation.js";
 import { getContact, updateContact } from "../../services/contacts.js";
+import { getDmProfile, resyncDmProfile, saveDmProfile } from "../../services/dm-profile.js";
 import { handleInbound, replyToConversation } from "../../services/dm-engine.js";
 import { assertFeature } from "../../services/limits.js";
 import { ctxOf, requireCtx } from "../context.js";
-import { CommentRulePatchSchema, CommentRuleSchema, ContactPatchSchema, RulePatchSchema, RuleSchema } from "../schemas.js";
+import { CommentRulePatchSchema, CommentRuleSchema, ContactPatchSchema, DmProfileSchema, RulePatchSchema, RuleSchema } from "../schemas.js";
 
 const Id = z.object({ id: z.string() });
 
@@ -156,6 +157,15 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     deleteCommentRule(ctxOf(req), Id.parse(req.params).id);
     return { ok: true };
   });
+
+  /* ---------------- Sohbet menüsü (ice breakers + sabit menü) ---------------- */
+
+  app.get("/api/channels/:id/dm-profile", async (req) => getDmProfile(ctxOf(req), Id.parse(req.params).id));
+
+  /** Kaydeder ve Meta'ya gönderir; gönderim hatası syncError alanında döner */
+  app.put("/api/channels/:id/dm-profile", async (req) => saveDmProfile(ctxOf(req), Id.parse(req.params).id, DmProfileSchema.parse(req.body)));
+
+  app.post("/api/channels/:id/dm-profile/sync", async (req) => resyncDmProfile(ctxOf(req), Id.parse(req.params).id));
 
   /** Son özel yanıtlar (kuyruk ve gönderim geçmişi) */
   app.get("/api/private-replies", async (req) => {

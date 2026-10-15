@@ -360,6 +360,23 @@ export interface CommentRule {
 
 export type PrivateReplyStatus = "queued" | "sending" | "sent" | "failed" | "skipped" | "expired";
 
+/** Sohbet menüsü öğesi: basınca gidecek cevap ya da bağlantı (bağlantı yalnızca sabit menüde) */
+export interface DmProfileItem {
+  title: string;
+  replyText?: string | null;
+  url?: string | null;
+}
+
+/** Kanalın sohbet menüsü: hazır sorular (ice breakers) ve sabit menü (sunucudaki DmProfile ile aynı) */
+export interface DmProfile {
+  channelId: string;
+  iceBreakers: DmProfileItem[];
+  menu: DmProfileItem[];
+  syncedAt: string | null;
+  syncError: string | null;
+  updatedAt: string | null;
+}
+
 export interface PrivateReply {
   channelId: string;
   commentId: string;

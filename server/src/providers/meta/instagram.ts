@@ -3,7 +3,7 @@ import { createLogger } from "../../core/logger.js";
 import type { Channel } from "../../core/types.js";
 import { http, sleep } from "../http.js";
 import { ProviderError, type AudienceBreakdown, type ConnectedAccount, type OAuthStart, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
-import { channelBase, fetchInsights, GRAPH, graph, IG_GRAPH, insightBreakdown, insightNumber, metaOAuthCallback, messagingTypeParams, metaOAuthStart, sendCommentPrivateReply, sendPageMessage, waitForContainer } from "./common.js";
+import { channelBase, fetchInsights, GRAPH, graph, IG_GRAPH, insightBreakdown, insightNumber, metaOAuthCallback, messagingTypeParams, metaOAuthStart, sendCommentPrivateReply, sendPageMessage, syncMessengerProfile, waitForContainer } from "./common.js";
 
 async function createContainer(igId: string, token: string, params: Record<string, unknown>, base?: string): Promise<string> {
   const r = await graph<{ id: string }>(`/${igId}/media`, token, { method: "POST", params, base });
@@ -141,6 +141,13 @@ export const instagramProvider: Provider = {
     if (channel.metadata.igLogin) return { externalId: await sendCommentPrivateReply(channel.externalId, channel.accessToken, commentId, message, IG_GRAPH()) };
     const pageId = (channel.metadata.pageId as string) || channel.externalId;
     return { externalId: await sendCommentPrivateReply(pageId, channel.accessToken, commentId, message) };
+  },
+
+  async setMessengerProfile(channel, profile) {
+    // Instagram Login: /me graph.instagram.com'da; Facebook Login: bağlı sayfa üzerinden, platform=instagram
+    if (channel.metadata.igLogin) return syncMessengerProfile("/me", channel.accessToken, profile, { base: IG_GRAPH(), platform: "instagram" });
+    const pageId = (channel.metadata.pageId as string) || channel.externalId;
+    return syncMessengerProfile(`/${pageId}`, channel.accessToken, profile, { platform: "instagram" });
   },
 
   async fetchMetrics(channel: Channel) {

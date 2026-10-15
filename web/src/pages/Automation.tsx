@@ -17,6 +17,7 @@ import {
   GitFork,
   History,
   Layers,
+  ListPlus,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -58,8 +59,9 @@ import { useSession } from "../lib/session";
 import { Can, Empty, FeatureGate, Modal, PageHead, ProviderIcon, Stat, useToast } from "../components/ui";
 import { copyText } from "../lib/clipboard";
 import { CommentToDmTab } from "../panel/automation/CommentToDm";
+import { DmProfileTab } from "../panel/automation/DmProfile";
 
-type TabMode = "workflows" | "rules" | "comments" | "settings";
+type TabMode = "workflows" | "rules" | "comments" | "menu" | "settings";
 type EditingRule = Omit<Rule, "id"> & { id?: string };
 
 const EMPTY_RULE: Omit<Rule, "id"> = {
@@ -338,6 +340,9 @@ export default function AutomationPage() {
         </button>
         <button className={activeTab === "comments" ? "active" : ""} onClick={() => setActiveTab("comments")}>
           <MessageCircle style={{ width: 15 }} /> {t("Yorumdan DM'e")}
+        </button>
+        <button className={activeTab === "menu" ? "active" : ""} onClick={() => setActiveTab("menu")}>
+          <ListPlus style={{ width: 15 }} /> {t("Sohbet Menüsü")}
         </button>
         <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>
           <Clock style={{ width: 15 }} /> {t("Çalışma Saatleri & Yedek Yanıt")}
@@ -690,6 +695,8 @@ export default function AutomationPage() {
       )}
 
       {activeTab === "comments" && <CommentToDmTab channels={channels.data ?? []} inboxEnabled={features?.inbox !== false} />}
+
+      {activeTab === "menu" && <DmProfileTab channels={channels.data ?? []} inboxEnabled={features?.inbox !== false} />}
 
       {/* ============================================================
           SEKME 3: ÇALIŞMA SAATLERİ & YEDEK YANIT
