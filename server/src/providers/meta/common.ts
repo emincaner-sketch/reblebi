@@ -137,22 +137,27 @@ export async function metaOAuthCallback(code: string, redirectUri: string): Prom
   return accounts;
 }
 
-/** Instagram/Threads konteyner durumunu FINISHED olana kadar bekler */
+/**
+ * Instagram/Threads konteyner durumunu FINISHED olana kadar bekler.
+ * Instagram durumu `status_code`'da (açıklama `status`'ta) verir; Threads'te `status_code` alanı yoktur
+ * (istenirse kod 100 hatası döner), durum `status`'ta, açıklama `error_message`'dadır.
+ */
 export async function waitForContainer(
   statusUrl: string,
   token: string,
-  opts: { timeoutMs?: number; intervalMs?: number } = {},
+  opts: { timeoutMs?: number; intervalMs?: number; api?: "instagram" | "threads" } = {},
 ): Promise<void> {
+  const threads = opts.api === "threads";
   const deadline = Date.now() + (opts.timeoutMs ?? 5 * 60_000);
   while (Date.now() < deadline) {
-    const r = await graph<{ status_code?: string; status?: string }>(statusUrl, token, {
-      params: { fields: "status_code,status" },
+    const r = await graph<{ status_code?: string; status?: string; error_message?: string }>(statusUrl, token, {
+      params: { fields: threads ? "status,error_message" : "status_code,status" },
       base: "",
     });
-    const code = r.status_code ?? "";
+    const code = (threads ? r.status : r.status_code) ?? "";
     if (code === "FINISHED") return;
     if (code === "ERROR" || code === "EXPIRED") {
-      throw new ProviderError(`Medya işleme başarısız: ${r.status ?? code}`);
+      throw new ProviderError(`Medya işleme başarısız: ${(threads ? r.error_message : r.status) || code}`);
     }
     await sleep(opts.intervalMs ?? 4000);
   }

@@ -15,7 +15,7 @@ async function container(userId: string, token: string, params: Record<string, u
 }
 
 async function publishOne(userId: string, token: string, creationId: string): Promise<PublishResult> {
-  await waitForContainer(`${TH}/${creationId}`, token, { timeoutMs: 5 * 60_000 });
+  await waitForContainer(`${TH}/${creationId}`, token, { timeoutMs: 5 * 60_000, api: "threads" });
   const r = await graph<{ id: string }>(`${TH}/${userId}/threads_publish`, token, { method: "POST", params: { creation_id: creationId } });
   let url: string | null = null;
   try {
@@ -145,7 +145,7 @@ export const threadsProvider: Provider = {
         const children: string[] = [];
         for (const m of media.slice(0, 20)) {
           const child = await container(userId, token, { ...mediaParams(m), is_carousel_item: true });
-          await waitForContainer(`${TH}/${child}`, token);
+          await waitForContainer(`${TH}/${child}`, token, { api: "threads" });
           children.push(child);
         }
         cid = await container(userId, token, { media_type: "CAROUSEL", children: children.join(","), text, reply_control: replyControl, reply_to_id: replyTo ?? undefined });
