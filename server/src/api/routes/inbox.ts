@@ -2,15 +2,17 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AppError, notFound } from "../../core/i18n.js";
 import { channelsRepo } from "../../core/repos/channels.js";
+import { privateRepliesRepo, type CommentRuleInput } from "../../core/repos/comment-automation.js";
 import { inboxRepo } from "../../core/repos/inbox.js";
 import { rulesRepo, type RuleInput } from "../../core/repos/misc.js";
 import { membershipsRepo } from "../../core/repos/orgs.js";
 import { aiAvailable, draftReply, summarizeConversations } from "../../ai/index.js";
 import { requireRole } from "../../services/access.js";
+import { createCommentRule, deleteCommentRule, listCommentRules, updateCommentRule } from "../../services/comment-automation.js";
 import { handleInbound, replyToConversation } from "../../services/dm-engine.js";
 import { assertFeature } from "../../services/limits.js";
 import { ctxOf, requireCtx } from "../context.js";
-import { RulePatchSchema, RuleSchema } from "../schemas.js";
+import { CommentRulePatchSchema, CommentRuleSchema, RulePatchSchema, RuleSchema } from "../schemas.js";
 
 const Id = z.object({ id: z.string() });
 
@@ -132,5 +134,28 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     requireRole(ctx, "admin");
     rulesRepo.remove(ctx.orgId, Id.parse(req.params).id);
     return { ok: true };
+  });
+
+  /* ---------------- Yorumdan DM'e kuralları ---------------- */
+
+  app.get("/api/comment-rules", async (req) => listCommentRules(ctxOf(req)));
+
+  app.post("/api/comment-rules", async (req) => createCommentRule(ctxOf(req), CommentRuleSchema.parse(req.body) as CommentRuleInput));
+
+  app.put("/api/comment-rules/:id", async (req) =>
+    updateCommentRule(ctxOf(req), Id.parse(req.params).id, CommentRulePatchSchema.parse(req.body) as Partial<CommentRuleInput>),
+  );
+
+  app.delete("/api/comment-rules/:id", async (req) => {
+    deleteCommentRule(ctxOf(req), Id.parse(req.params).id);
+    return { ok: true };
+  });
+
+  /** Son özel yanıtlar (kuyruk ve gönderim geçmişi) */
+  app.get("/api/private-replies", async (req) => {
+    const q = z
+      .object({ status: z.enum(["queued", "sending", "sent", "failed", "skipped", "expired"]).optional(), ruleId: z.string().optional(), limit: z.coerce.number().int().min(1).max(500).optional() })
+      .parse(req.query);
+    return privateRepliesRepo.list(ctxOf(req).orgId, q);
   });
 }

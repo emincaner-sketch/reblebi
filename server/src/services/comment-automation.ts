@@ -1,12 +1,14 @@
+import { AppError, notFound } from "../core/i18n.js";
 import { createLogger } from "../core/logger.js";
 import { channelsRepo } from "../core/repos/channels.js";
-import { commentRulesRepo, privateRepliesRepo } from "../core/repos/comment-automation.js";
+import { commentRulesRepo, privateRepliesRepo, type CommentRuleInput } from "../core/repos/comment-automation.js";
 import { inboxRepo } from "../core/repos/inbox.js";
 import { activityRepo } from "../core/repos/misc.js";
-import type { Channel, CommentRule, PrivateReply } from "../core/types.js";
+import type { Channel, CommentRule, Ctx, PrivateReply } from "../core/types.js";
 import { getProvider, ProviderError, type InboundEvent } from "../providers/index.js";
-import { matchesKeywords } from "./keyword-match.js";
-import { hasFeature } from "./limits.js";
+import { requireRole } from "./access.js";
+import { matchesKeywords, parseKeywordList } from "./keyword-match.js";
+import { assertFeature, hasFeature } from "./limits.js";
 import { ensureFreshToken } from "./publisher.js";
 
 /**
@@ -199,4 +201,43 @@ export async function processPrivateReplyQueue(now = new Date()): Promise<{ sent
     }
   }
   return { sent, processed };
+}
+
+/* ---------------- Kural yönetimi (panel ve MCP) ---------------- */
+
+function checkRule(ctx: Ctx, r: Pick<CommentRuleInput, "channelId" | "matchType" | "pattern">): void {
+  if (r.channelId) {
+    const ch = channelsRepo.get(ctx.orgId, r.channelId);
+    if (!ch) throw notFound("channel");
+    if (ch.provider !== "instagram" && ch.provider !== "facebook") throw new AppError(400, "comment_rule.provider");
+  }
+  if (r.matchType === "keyword" && !parseKeywordList(r.pattern).length) throw new AppError(400, "comment_rule.pattern");
+}
+
+/** Yorum kuralı oluşturur. MCP'den gelen kurallar her zaman kapalı oluşur (insan açar). */
+export function createCommentRule(ctx: Ctx, input: CommentRuleInput): CommentRule {
+  requireRole(ctx, "admin");
+  assertFeature(ctx.orgId, "inbox");
+  checkRule(ctx, input);
+  return commentRulesRepo.create(ctx.orgId, ctx.via === "session" ? input : { ...input, enabled: 0 });
+}
+
+export function updateCommentRule(ctx: Ctx, id: string, patch: Partial<CommentRuleInput>): CommentRule {
+  requireRole(ctx, "admin");
+  const cur = commentRulesRepo.get(ctx.orgId, id);
+  if (!cur) throw notFound("rule");
+  checkRule(ctx, { ...cur, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) });
+  if (patch.enabled) assertFeature(ctx.orgId, "inbox");
+  return commentRulesRepo.update(ctx.orgId, id, patch)!;
+}
+
+export function deleteCommentRule(ctx: Ctx, id: string): void {
+  requireRole(ctx, "admin");
+  commentRulesRepo.remove(ctx.orgId, id);
+}
+
+/** Kurallar ve son 30 günün gönderim sayıları (akış başına basit analiz) */
+export function listCommentRules(ctx: Ctx): Array<CommentRule & { stats: ReturnType<typeof privateRepliesRepo.stats> }> {
+  const since = new Date(Date.now() - 30 * 86400_000).toISOString();
+  return commentRulesRepo.list(ctx.orgId).map((r) => ({ ...r, stats: privateRepliesRepo.stats(ctx.orgId, { ruleId: r.id, since }) }));
 }

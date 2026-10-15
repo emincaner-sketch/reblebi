@@ -91,6 +91,36 @@ export const RuleSchema = z.object({
 
 export const RulePatchSchema = z.object(RuleFields).partial();
 
+/* Yorumdan DM'e kuralı: Instagram DM metni en fazla 1000 karakter */
+const CommentRuleFields = {
+  name: z.string().min(1).max(100),
+  enabled: z.coerce.number().int().min(0).max(1),
+  channelId: z.string().nullable(),
+  mediaIds: z.array(z.string().min(1).max(100)).max(50),
+  matchType: z.enum(["any", "keyword"]),
+  pattern: z.string().max(500).nullable(),
+  dmText: z.string().trim().min(1).max(900),
+  publicReplies: z.array(z.string().trim().min(1).max(300)).max(10),
+  includeReplies: z.coerce.number().int().min(0).max(1),
+  botNotice: z.coerce.number().int().min(0).max(1),
+  priority: z.coerce.number().int().min(0).max(10000),
+};
+
+export const CommentRuleSchema = z.object({
+  ...CommentRuleFields,
+  enabled: CommentRuleFields.enabled.default(0),
+  channelId: CommentRuleFields.channelId.optional(),
+  mediaIds: CommentRuleFields.mediaIds.default([]),
+  matchType: CommentRuleFields.matchType.default("keyword"),
+  pattern: CommentRuleFields.pattern.optional(),
+  publicReplies: CommentRuleFields.publicReplies.default([]),
+  includeReplies: CommentRuleFields.includeReplies.default(0),
+  botNotice: CommentRuleFields.botNotice.default(1),
+  priority: CommentRuleFields.priority.default(100),
+});
+
+export const CommentRulePatchSchema = z.object(CommentRuleFields).partial();
+
 export const PlannerSchema = z.object({
   brief: z.string().min(5).max(5000),
   goal: z.string().max(500).optional(),

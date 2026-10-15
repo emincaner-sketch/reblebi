@@ -4,6 +4,7 @@ import { config } from "../core/config.js";
 import { AppError } from "../core/i18n.js";
 import { campaignsRepo, tagsRepo } from "../core/repos/content.js";
 import { inboxRepo } from "../core/repos/inbox.js";
+import { privateRepliesRepo, type CommentRuleInput } from "../core/repos/comment-automation.js";
 import { mediaRepo, rulesRepo, type RuleInput } from "../core/repos/misc.js";
 import { orgSettingsRepo, orgsRepo } from "../core/repos/orgs.js";
 import { channelsRepo } from "../core/repos/channels.js";
@@ -11,8 +12,9 @@ import { postsRepo } from "../core/repos/posts.js";
 import { workflowsRepo, workflowRunsRepo } from "../core/repos/workflows.js";
 import type { Ctx, PostStatus } from "../core/types.js";
 import { aiAvailable, draftReply, generateContent } from "../ai/index.js";
-import { RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
+import { CommentRulePatchSchema, CommentRuleSchema, RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
 import { requireRole } from "../services/access.js";
+import { createCommentRule, deleteCommentRule, listCommentRules, updateCommentRule } from "../services/comment-automation.js";
 import { executeWorkflow } from "../services/workflow-engine.js";
 import { analyticsOverview, dashboard } from "../services/analytics.js";
 import { listChannels } from "../services/channels.js";
@@ -625,6 +627,64 @@ export function buildMcpServer(ctx: Ctx): McpServer {
         rulesRepo.remove(ctx.orgId, a.ruleId);
         return { ok: true };
       }),
+  );
+
+  /* ----- Yorumdan DM'e ----- */
+
+  server.registerTool(
+    "list_comment_rules",
+    {
+      title: "Comment-to-DM rules · Yorumdan DM'e kuralları",
+      description: "Rules that DM people who comment on Instagram/Facebook posts, with last-30-day counts per status (queued, sent, failed, skipped, expired).",
+      annotations: { readOnlyHint: true },
+    },
+    async () => run(ctx, () => listCommentRules(ctx)),
+  );
+
+  server.registerTool(
+    "create_comment_rule",
+    {
+      title: "Create comment-to-DM rule · Yorumdan DM'e kuralı ekle",
+      description:
+        "When a comment on an Instagram/Facebook post matches, the commenter gets one private reply DM (one per comment, first matching comment per person per post, within 7 days) and optionally one of the publicReplies under the comment. matchType keyword uses whole-word, Turkish-aware matching (end a word with * for suffixes). dmText supports {{name}}; botNotice adds an 'automatic message' note. mediaIds empty = all posts. Rules created here are always DISABLED; a human enables them after reviewing the texts.",
+      inputSchema: CommentRuleSchema.omit({ enabled: true }).shape,
+    },
+    async (a) => run(ctx, () => createCommentRule(ctx, { ...CommentRuleSchema.parse(a), enabled: 0 } as CommentRuleInput)),
+  );
+
+  server.registerTool(
+    "update_comment_rule",
+    {
+      title: "Update comment-to-DM rule · Yorumdan DM'e kuralını güncelle",
+      description: "Changes only the provided fields. Do not set enabled=1 unless the user explicitly approved the rule texts.",
+      inputSchema: { ruleId: z.string(), ...CommentRulePatchSchema.shape },
+    },
+    async ({ ruleId, ...rest }) => run(ctx, () => updateCommentRule(ctx, ruleId, CommentRulePatchSchema.parse(rest) as Partial<CommentRuleInput>)),
+  );
+
+  server.registerTool(
+    "delete_comment_rule",
+    { title: "Delete comment-to-DM rule · Yorumdan DM'e kuralını sil", description: "Removes a comment-to-DM rule.", inputSchema: { ruleId: z.string() }, annotations: { destructiveHint: true } },
+    async (a) =>
+      run(ctx, () => {
+        deleteCommentRule(ctx, a.ruleId);
+        return { ok: true };
+      }),
+  );
+
+  server.registerTool(
+    "list_private_replies",
+    {
+      title: "Comment-to-DM log · Yorumdan DM'e geçmişi",
+      description: "Recent queued/sent/failed private replies with the comment text and error, newest first.",
+      inputSchema: {
+        status: z.enum(["queued", "sending", "sent", "failed", "skipped", "expired"]).optional(),
+        ruleId: z.string().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => run(ctx, () => privateRepliesRepo.list(ctx.orgId, a)),
   );
 
   /* ----- Analitik ----- */

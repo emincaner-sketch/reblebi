@@ -156,6 +156,8 @@ const tr: Dict = {
   "channel.oauth_state": "Geçersiz ya da süresi dolmuş bağlantı isteği; tekrar dene",
   "channel.oauth_missing": "Eksik OAuth parametresi",
   "channel.no_dm": "{provider} mesaj göndermeyi desteklemiyor",
+  "comment_rule.provider": "Yorumdan DM'e yalnızca Instagram ve Facebook kanallarında çalışır",
+  "comment_rule.pattern": "Anahtar kelime eşleşmesi için en az bir kelime yaz",
 
   // AI
   "ai.disabled": "AI yapılandırılmamış. Ayarlar > AI bölümünden sağlayıcı ve anahtar ekle.",
@@ -337,6 +339,8 @@ const en: Dict = {
   "channel.oauth_state": "Invalid or expired connection request; please try again",
   "channel.oauth_missing": "Missing OAuth parameter",
   "channel.no_dm": "{provider} doesn't support sending messages",
+  "comment_rule.provider": "Comment-to-DM only works on Instagram and Facebook channels",
+  "comment_rule.pattern": "Enter at least one keyword for keyword matching",
 
   "ai.disabled": "AI is not configured. Add a provider and key under Settings > AI.",
   "ai.refused": "The model declined this request",

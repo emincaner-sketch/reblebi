@@ -302,6 +302,38 @@ describe("uzaktan MCP (API anahtarı)", () => {
     assert.equal(r.json.result.isError, true);
     assert.match(r.json.result.content[0].text, /görsel|video/i);
   });
+
+  test("yorumdan DM'e: MCP'den oluşan kural her zaman kapalıdır; doğrulama ve sayılar", async () => {
+    const created = toolJson(
+      await mcp(apiKey, "tools/call", { name: "create_comment_rule", arguments: { name: "Link DM", channelId: ig, pattern: "link*", dmText: "Merhaba {{name}}", enabled: 1 } }, 20),
+    );
+    assert.ok(created.id, JSON.stringify(created));
+    assert.equal(created.enabled, 0, "MCP kuralı açamaz");
+    assert.equal(created.botNotice, 1);
+
+    const bad = await mcp(apiKey, "tools/call", { name: "create_comment_rule", arguments: { name: "Boş", matchType: "keyword", pattern: " , ", dmText: "x" } }, 21);
+    assert.equal(bad.json.result.isError, true);
+    const tgRule = await mcp(apiKey, "tools/call", { name: "create_comment_rule", arguments: { name: "TG", channelId: tg, matchType: "any", dmText: "x" } }, 22);
+    assert.equal(tgRule.json.result.isError, true);
+    assert.match(tgRule.json.result.content[0].text, /Instagram ve Facebook/);
+
+    const upd = toolJson(await mcp(apiKey, "tools/call", { name: "update_comment_rule", arguments: { ruleId: created.id, publicReplies: ["DM'den yazdım"] } }, 23));
+    assert.deepEqual(upd.publicReplies, ["DM'den yazdım"]);
+    const list = toolJson(await mcp(apiKey, "tools/call", { name: "list_comment_rules", arguments: {} }, 24));
+    const row = list.find((r: Json) => r.id === created.id);
+    assert.deepEqual(row.stats, { queued: 0, sending: 0, sent: 0, failed: 0, skipped: 0, expired: 0 });
+    assert.deepEqual(toolJson(await mcp(apiKey, "tools/call", { name: "list_private_replies", arguments: {} }, 25)), []);
+
+    // Panelden (oturum) açılabilir
+    const viaPanel = await call("POST", "/api/comment-rules", { cookie: owner, body: { name: "Panel", matchType: "any", dmText: "Selam", enabled: 1 } });
+    assert.equal(viaPanel.status, 200, JSON.stringify(viaPanel.json));
+    assert.equal(viaPanel.json.enabled, 1);
+    const off = await call("PUT", `/api/comment-rules/${viaPanel.json.id}`, { cookie: owner, body: { enabled: 0 } });
+    assert.equal(off.json.enabled, 0);
+    assert.equal((await call("DELETE", `/api/comment-rules/${viaPanel.json.id}`, { cookie: owner })).status, 200);
+    await mcp(apiKey, "tools/call", { name: "delete_comment_rule", arguments: { ruleId: created.id } }, 26);
+    assert.equal((await call("GET", "/api/comment-rules", { cookie: owner })).json.length, 0);
+  });
 });
 
 describe("OAuth 2.1 (claude.ai / ChatGPT / Gemini tarzı bağlantı)", () => {
