@@ -745,6 +745,14 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_pr_org ON private_replies(org_id, created_at);
     `,
   },
+  {
+    // Yorumdan DM'e: ilk mesaja düğmeler (bağlantı ya da basınca cevap); kuyruğa girerken düğmeler kayda yazılır
+    id: 21,
+    up: (d) => {
+      addColumn(d, "comment_rules", "buttons", "TEXT NOT NULL DEFAULT '[]'");
+      addColumn(d, "private_replies", "dm_buttons", "TEXT NOT NULL DEFAULT '[]'");
+    },
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

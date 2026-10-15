@@ -14,8 +14,11 @@ interface MessagingEntry {
     mid?: string;
     text?: string;
     is_echo?: boolean;
+    quick_reply?: { payload?: string };
     attachments?: Array<{ type: string; payload?: { url?: string; title?: string } }>;
   };
+  /** Düğmeye basma (Messenger ve Instagram) */
+  postback?: { mid?: string; title?: string; payload?: string };
 }
 
 interface WebhookBody {
@@ -121,6 +124,20 @@ export function parseMetaWebhook(body: WebhookBody): ParsedMetaEvent[] {
       const provider: ProviderId = object === "instagram" ? "instagram" : "facebook";
       out.push(...parseCommentChanges(provider, entry));
       for (const m of entry.messaging ?? []) {
+        if (m.postback?.payload && m.sender?.id) {
+          const title = m.postback.title ?? m.postback.payload;
+          out.push({
+            provider,
+            accountExternalId: m.recipient?.id ?? entry.id,
+            conversationExternalId: m.sender.id,
+            participantId: m.sender.id,
+            externalMessageId: m.postback.mid ?? null,
+            text: title,
+            postback: { payload: m.postback.payload, title },
+            receivedAt: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+          });
+          continue;
+        }
         if (!m.message || m.message.is_echo || !m.sender?.id) continue;
         const text = m.message.text ?? attachmentsToText(m.message.attachments);
         out.push({
@@ -131,6 +148,7 @@ export function parseMetaWebhook(body: WebhookBody): ParsedMetaEvent[] {
           externalMessageId: m.message.mid ?? null,
           text,
           attachments: (m.message.attachments ?? []).map((a) => ({ type: a.type, url: a.payload?.url, name: a.payload?.title })),
+          postback: m.message.quick_reply?.payload ? { payload: m.message.quick_reply.payload, title: text } : undefined,
           receivedAt: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
         });
       }

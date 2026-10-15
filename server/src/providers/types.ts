@@ -93,6 +93,8 @@ export interface InboundEvent {
   kind?: "dm" | "comment" | "review";
   /** Yorumlar için: { kind, mediaId|postId, commentId, permalink, … } konuşmanın metadata alanına yazılır */
   metadata?: Record<string, unknown>;
+  /** Düğmeye (postback) ya da hızlı cevaba basıldıysa: gönderdiğimiz payload ve düğme başlığı */
+  postback?: { payload: string; title: string };
 }
 
 export interface SendMessageInput {
@@ -158,9 +160,20 @@ export interface Provider {
   healthCheck?(channel: Channel): Promise<{ ok: boolean; detail?: string }>;
 }
 
-/** Otomatik giden mesaj içeriği (ileride düğmeler ve hızlı cevaplar eklenecek) */
+/** Mesaj düğmesi: postback (basınca webhook'a payload gelir) ya da bağlantı */
+export type MessageButton = { type: "postback"; title: string; payload: string } | { type: "web_url"; title: string; url: string };
+
+/** Hızlı cevap: mesajın altında çıkan, basınca metni gönderen kısa seçenek */
+export interface QuickReply {
+  title: string;
+  payload: string;
+}
+
+/** Otomatik giden mesaj içeriği: metin, en fazla 3 düğme, en fazla 13 hızlı cevap */
 export interface OutboundMessage {
   text: string;
+  buttons?: MessageButton[];
+  quickReplies?: QuickReply[];
 }
 
 export class ProviderError extends Error {

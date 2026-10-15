@@ -295,10 +295,21 @@ export interface CommentRule {
   includeReplies: number;
   /** 1: DM'in sonuna "otomatik mesaj" notu eklenir */
   botNotice: number;
+  /** İlk DM'deki düğmeler (en fazla 3): bağlantı (url) ya da basınca gönderilecek cevap (replyText) */
+  buttons: CommentRuleButton[];
   priority: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface CommentRuleButton {
+  title: string;
+  url?: string | null;
+  replyText?: string | null;
+}
+
+/** Giden mesaj düğmesi (sağlayıcıdaki MessageButton ile aynı biçim) */
+export type DmButton = { type: "postback"; title: string; payload: string } | { type: "web_url"; title: string; url: string };
 
 export type PrivateReplyStatus = "queued" | "sending" | "sent" | "failed" | "skipped" | "expired";
 
@@ -317,6 +328,7 @@ export interface PrivateReply {
   nextAttemptAt: string;
   lastAttemptAt: string | null;
   dmText: string;
+  dmButtons: DmButton[];
   dmMessageId: string | null;
   publicReplyText: string | null;
   publicReplyId: string | null;

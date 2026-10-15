@@ -646,7 +646,7 @@ export function buildMcpServer(ctx: Ctx): McpServer {
     {
       title: "Create comment-to-DM rule · Yorumdan DM'e kuralı ekle",
       description:
-        "When a comment on an Instagram/Facebook post matches, the commenter gets one private reply DM (one per comment, first matching comment per person per post, within 7 days) and optionally one of the publicReplies under the comment. matchType keyword uses whole-word, Turkish-aware matching (end a word with * for suffixes). dmText supports {{name}}; botNotice adds an 'automatic message' note. mediaIds empty = all posts. Rules created here are always DISABLED; a human enables them after reviewing the texts.",
+        "When a comment on an Instagram/Facebook post matches, the commenter gets one private reply DM (one per comment, first matching comment per person per post, within 7 days) and optionally one of the publicReplies under the comment. matchType keyword uses whole-word, Turkish-aware matching (end a word with * for suffixes). dmText supports {{name}}; botNotice adds an 'automatic message' note. buttons (max 3, title max 20 chars): each has either url (https link) or replyText (sent when the person taps it; tapping opens the 24-hour messaging window); with buttons the DM is max 640 chars. mediaIds empty = all posts. Rules created here are always DISABLED; a human enables them after reviewing the texts.",
       inputSchema: CommentRuleSchema.omit({ enabled: true }).shape,
     },
     async (a) => run(ctx, () => createCommentRule(ctx, { ...CommentRuleSchema.parse(a), enabled: 0 } as CommentRuleInput)),

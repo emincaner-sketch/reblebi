@@ -20,6 +20,7 @@ function rowToCommentRule(r: Row): CommentRule {
     publicReplies: parseJson<string[]>(r.public_replies, []),
     includeReplies: Number(r.include_replies ?? 0),
     botNotice: Number(r.bot_notice ?? 1),
+    buttons: parseJson<CommentRule["buttons"]>(r.buttons, []),
     priority: Number(r.priority ?? 100),
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
@@ -42,8 +43,8 @@ export const commentRulesRepo = {
     getDb()
       .prepare(
         `INSERT INTO comment_rules (id, org_id, name, enabled, channel_id, media_ids, match_type, pattern, dm_text, public_replies,
-         include_replies, bot_notice, priority, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         include_replies, bot_notice, buttons, priority, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -58,6 +59,7 @@ export const commentRulesRepo = {
         JSON.stringify(input.publicReplies ?? []),
         input.includeReplies ? 1 : 0,
         input.botNotice ? 1 : 0,
+        JSON.stringify(input.buttons ?? []),
         input.priority,
         now,
         now,
@@ -71,7 +73,7 @@ export const commentRulesRepo = {
     getDb()
       .prepare(
         `UPDATE comment_rules SET name=?, enabled=?, channel_id=?, media_ids=?, match_type=?, pattern=?, dm_text=?, public_replies=?,
-         include_replies=?, bot_notice=?, priority=?, updated_at=? WHERE id=? AND org_id=?`,
+         include_replies=?, bot_notice=?, buttons=?, priority=?, updated_at=? WHERE id=? AND org_id=?`,
       )
       .run(
         m.name,
@@ -84,6 +86,7 @@ export const commentRulesRepo = {
         JSON.stringify(m.publicReplies ?? []),
         m.includeReplies ? 1 : 0,
         m.botNotice ? 1 : 0,
+        JSON.stringify(m.buttons ?? []),
         m.priority,
         nowIso(),
         id,
@@ -114,6 +117,7 @@ function rowToPrivateReply(r: Row): PrivateReply {
     nextAttemptAt: r.next_attempt_at as string,
     lastAttemptAt: (r.last_attempt_at as string) ?? null,
     dmText: r.dm_text as string,
+    dmButtons: parseJson<PrivateReply["dmButtons"]>(r.dm_buttons, []),
     dmMessageId: (r.dm_message_id as string) ?? null,
     publicReplyText: (r.public_reply_text as string) ?? null,
     publicReplyId: (r.public_reply_id as string) ?? null,
@@ -135,6 +139,7 @@ export interface PrivateReplyInput {
   commentText: string;
   commentedAt: string;
   dmText: string;
+  dmButtons: PrivateReply["dmButtons"];
   publicReplyText: string | null;
 }
 
@@ -148,8 +153,8 @@ export const privateRepliesRepo = {
     const r = getDb()
       .prepare(
         `INSERT OR IGNORE INTO private_replies (channel_id, comment_id, org_id, rule_id, media_id, commenter_id, commenter_name, comment_text,
-         commented_at, status, attempts, next_attempt_at, dm_text, public_reply_text, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?)`,
+         commented_at, status, attempts, next_attempt_at, dm_text, dm_buttons, public_reply_text, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.channelId,
@@ -163,6 +168,7 @@ export const privateRepliesRepo = {
         input.commentedAt,
         at,
         input.dmText,
+        JSON.stringify(input.dmButtons ?? []),
         input.publicReplyText,
         at,
       );

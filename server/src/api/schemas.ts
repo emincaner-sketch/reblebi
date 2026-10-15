@@ -103,6 +103,16 @@ const CommentRuleFields = {
   publicReplies: z.array(z.string().trim().min(1).max(300)).max(10),
   includeReplies: z.coerce.number().int().min(0).max(1),
   botNotice: z.coerce.number().int().min(0).max(1),
+  /** En fazla 3 düğme; her biri ya bağlantı (url) ya da basınca gidecek cevap (replyText). Başlık en fazla 20 karakter. */
+  buttons: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(20),
+        url: z.string().trim().url().max(2000).nullable().optional(),
+        replyText: z.string().trim().max(900).nullable().optional(),
+      }),
+    )
+    .max(3),
   priority: z.coerce.number().int().min(0).max(10000),
 };
 
@@ -116,6 +126,7 @@ export const CommentRuleSchema = z.object({
   publicReplies: CommentRuleFields.publicReplies.default([]),
   includeReplies: CommentRuleFields.includeReplies.default(0),
   botNotice: CommentRuleFields.botNotice.default(1),
+  buttons: CommentRuleFields.buttons.default([]),
   priority: CommentRuleFields.priority.default(100),
 });
 

@@ -189,11 +189,53 @@ export function verifyMetaSignature(
   });
 }
 
+/** Meta Send API sınırları (Messenger ve Instagram) */
+export const MESSAGE_LIMITS = { buttons: 3, quickReplies: 13, titleChars: 20, buttonTextChars: 640, textChars: 1000, payloadChars: 1000 } as const;
+
+/** Mesajın Meta sınırlarına uyup uymadığını kontrol eder; uymuyorsa açıklayıcı hata fırlatır */
+export function validateOutboundMessage(m: OutboundMessage): void {
+  const buttons = m.buttons ?? [];
+  const quick = m.quickReplies ?? [];
+  const L = MESSAGE_LIMITS;
+  if (!m.text.trim()) throw new ProviderError("Mesaj metni boş", 400);
+  if (buttons.length > L.buttons) throw new ProviderError(`En fazla ${L.buttons} düğme eklenebilir`, 400);
+  if (quick.length > L.quickReplies) throw new ProviderError(`En fazla ${L.quickReplies} hızlı cevap eklenebilir`, 400);
+  if (buttons.length && m.text.length > L.buttonTextChars) throw new ProviderError(`Düğmeli mesaj en fazla ${L.buttonTextChars} karakter olabilir`, 400);
+  if (m.text.length > L.textChars) throw new ProviderError(`Mesaj en fazla ${L.textChars} karakter olabilir`, 400);
+  for (const b of [...buttons, ...quick]) {
+    if (!b.title.trim() || b.title.length > L.titleChars) throw new ProviderError(`Düğme ve hızlı cevap başlığı 1-${L.titleChars} karakter olmalı: "${b.title}"`, 400);
+  }
+  for (const b of buttons) {
+    if (b.type === "web_url" && !/^https:\/\//.test(b.url)) throw new ProviderError(`Bağlantı https:// ile başlamalı: ${b.url}`, 400);
+    if (b.type === "postback" && (!b.payload || b.payload.length > L.payloadChars)) throw new ProviderError("Düğme payload'ı geçersiz", 400);
+  }
+  for (const q of quick) if (!q.payload || q.payload.length > L.payloadChars) throw new ProviderError("Hızlı cevap payload'ı geçersiz", 400);
+}
+
+/** Send API "message" alanı: düğme varsa button template, hızlı cevaplar her mesaja eklenebilir */
+export function metaMessagePayload(m: OutboundMessage): Record<string, unknown> {
+  validateOutboundMessage(m);
+  const message: Record<string, unknown> = m.buttons?.length
+    ? {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: m.text,
+            buttons: m.buttons.map((b) => (b.type === "web_url" ? { type: "web_url", url: b.url, title: b.title } : { type: "postback", title: b.title, payload: b.payload })),
+          },
+        },
+      }
+    : { text: m.text };
+  if (m.quickReplies?.length) message.quick_replies = m.quickReplies.map((q) => ({ content_type: "text", title: q.title, payload: q.payload }));
+  return message;
+}
+
 /** Yorum sahibine özel yanıt: /{hesap}/messages, alıcı yorum kimliği (Messenger ve Instagram aynı biçim) */
 export async function sendCommentPrivateReply(accountId: string, token: string, commentId: string, message: OutboundMessage, base?: string): Promise<string | null> {
   const r = await graph<{ message_id?: string }>(`/${accountId}/messages`, token, {
     method: "POST",
-    params: { recipient: { comment_id: commentId }, message: { text: message.text } },
+    params: { recipient: { comment_id: commentId }, message: metaMessagePayload(message) },
     base,
   });
   return r.message_id ?? null;

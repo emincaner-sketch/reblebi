@@ -9,7 +9,7 @@ import type { AutoReplyRule, Channel, Conversation, Ctx, Message, OrgSettings, P
 import { aiAvailable, draftReply } from "../ai/index.js";
 import { getProvider, lookupParticipant, type InboundEvent } from "../providers/index.js";
 import { requireRole } from "./access.js";
-import { enqueueCommentDm } from "./comment-automation.js";
+import { enqueueCommentDm, handleCommentButton } from "./comment-automation.js";
 import { matchesKeywords } from "./keyword-match.js";
 import { hasFeature } from "./limits.js";
 import { emitWebhook, notify, orgT } from "./notify.js";
@@ -199,6 +199,9 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
     inboxRepo.flagAttention(conversation.id, true);
     return;
   }
+
+  // Yorumdan DM'e düğmesine basıldıysa tanımlı cevap gider; DM kuralları ayrıca çalışmaz
+  if (ev.postback && (await handleCommentButton(channel, conversation, ev.postback.payload, (text, ruleId) => sendReply(channel, conversation, text, "rule", ruleId)))) return;
 
   const settings = orgSettingsRepo.get(channel.orgId);
   if (containsHandoffKeyword(message.text, settings)) {

@@ -9,6 +9,9 @@ import { Can, Empty, Modal, useToast } from "../../components/ui";
 /** Sunucudaki BOT_NOTICE ile aynı (önizleme için) */
 const BOT_NOTICE = "(Bu mesaj otomatik gönderildi.)";
 const DM_MAX = 900;
+/** Düğmeli mesaj (button template) Meta sınırı; otomatik mesaj notu da sayılır */
+const DM_MAX_WITH_BUTTONS = 640;
+const BUTTON_TITLE_MAX = 20;
 
 type EditingCommentRule = Omit<CommentRule, "id" | "stats"> & { id?: string };
 
@@ -23,8 +26,12 @@ const EMPTY: EditingCommentRule = {
   publicReplies: [],
   includeReplies: 0,
   botNotice: 1,
+  buttons: [],
   priority: 100,
 };
+
+type RuleButton = CommentRule["buttons"][number];
+const isLink = (b: RuleButton) => b.url !== null && b.url !== undefined;
 
 interface FeedItem {
   id: string;
@@ -256,8 +263,13 @@ function CommentRuleEditor({
   // Önizlemede {{name}} örnek bir kullanıcı adıyla gösterilir (sunucudaki buildDmText ile aynı kural)
   const body = rule.dmText.replace(/\{\{\s*(name|isim)\s*\}\}/g, "ornek_ogrenci").trim();
   const preview = rule.botNotice ? `${body}\n\n${BOT_NOTICE}` : body;
+  const dmLimit = rule.buttons.length ? DM_MAX_WITH_BUTTONS - (rule.botNotice ? BOT_NOTICE.length + 2 : 0) : DM_MAX;
+  const setButton = (i: number, patch: Partial<RuleButton>) => set({ buttons: rule.buttons.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
+  const buttonsValid = rule.buttons.every(
+    (b) => b.title.trim() && b.title.trim().length <= BUTTON_TITLE_MAX && (isLink(b) ? /^https:\/\/\S+\.\S+/.test(b.url ?? "") : (b.replyText ?? "").trim()),
+  );
   const toggleMedia = (id: string) => set({ mediaIds: rule.mediaIds.includes(id) ? rule.mediaIds.filter((m) => m !== id) : [...rule.mediaIds, id] });
-  const valid = rule.name.trim() && rule.dmText.trim() && rule.dmText.length <= DM_MAX && (rule.matchType === "any" || (rule.pattern ?? "").trim());
+  const valid = rule.name.trim() && rule.dmText.trim() && rule.dmText.length <= dmLimit && buttonsValid && (rule.matchType === "any" || (rule.pattern ?? "").trim());
 
   return (
     <Modal title={rule.id ? t("Yorum kuralını düzenle") : t("Yeni yorum kuralı")} onClose={onClose} large>
@@ -343,8 +355,8 @@ function CommentRuleEditor({
         <div className="field">
           <label>{t("DM metni")}</label>
           <textarea className="input" rows={4} value={rule.dmText} onChange={(e) => set({ dmText: e.target.value })} placeholder={t("Merhaba {{name}}! İstediğin link: https://…")} />
-          <span className="help" style={{ color: rule.dmText.length > DM_MAX ? "var(--err)" : undefined }}>
-            {rule.dmText.length}/{DM_MAX} · {"{{name}}"} {t("yerine kişinin kullanıcı adı gelir.")}
+          <span className="help" style={{ color: rule.dmText.length > dmLimit ? "var(--err)" : undefined }}>
+            {rule.dmText.length}/{dmLimit} · {"{{name}}"} {t("yerine kişinin kullanıcı adı gelir.")}
           </span>
         </div>
 
@@ -358,8 +370,70 @@ function CommentRuleEditor({
               {t("Önizleme")}
             </div>
             {preview}
+            {rule.buttons.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+                {rule.buttons.map((b, i) => (
+                  <span key={i} className="badge" style={{ justifyContent: "center" }}>
+                    {b.title || "…"}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
+
+        <div className="field">
+          <label>{t("Düğmeler (en fazla 3)")}</label>
+          {rule.buttons.map((b, i) => (
+            <div key={i} className="card" style={{ padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                <input
+                  className="input"
+                  style={{ flex: "1 1 140px" }}
+                  value={b.title}
+                  maxLength={BUTTON_TITLE_MAX}
+                  onChange={(e) => setButton(i, { title: e.target.value })}
+                  placeholder={t("Düğme yazısı")}
+                  aria-label={t("Düğme yazısı")}
+                />
+                <select
+                  className="input"
+                  style={{ flex: "0 1 170px" }}
+                  value={isLink(b) ? "url" : "reply"}
+                  onChange={(e) => setButton(i, e.target.value === "url" ? { url: "", replyText: null } : { url: null, replyText: "" })}
+                  aria-label={t("Düğme türü")}
+                >
+                  <option value="reply">{t("Basınca cevap gönder")}</option>
+                  <option value="url">{t("Bağlantı aç")}</option>
+                </select>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => set({ buttons: rule.buttons.filter((_, j) => j !== i) })} aria-label={t("Düğmeyi kaldır")}>
+                  <Trash2 style={{ width: 14 }} />
+                </button>
+              </div>
+              {isLink(b) ? (
+                <input className="input" value={b.url ?? ""} onChange={(e) => setButton(i, { url: e.target.value })} placeholder="https://ydsmatik.com" aria-label={t("Bağlantı")} />
+              ) : (
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={b.replyText ?? ""}
+                  onChange={(e) => setButton(i, { replyText: e.target.value })}
+                  placeholder={t("Kişi düğmeye basınca gönderilecek mesaj")}
+                  aria-label={t("Kişi düğmeye basınca gönderilecek mesaj")}
+                />
+              )}
+              <span className="help">
+                {b.title.length}/{BUTTON_TITLE_MAX}
+              </span>
+            </div>
+          ))}
+          {rule.buttons.length < 3 && (
+            <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => set({ buttons: [...rule.buttons, { title: "", url: null, replyText: "" }] })}>
+              <Plus style={{ width: 14 }} /> {t("Düğme ekle")}
+            </button>
+          )}
+          <span className="help">{t("Kişi düğmeye basınca 24 saatlik mesajlaşma penceresi açılır; böylece sonraki cevaplar da gönderilebilir. Düğmeli DM en fazla 640 karakter.")}</span>
+        </div>
 
         <div className="field">
           <label>{t("Açık yorum cevabı (isteğe bağlı)")}</label>
@@ -382,7 +456,14 @@ function CommentRuleEditor({
         <button
           className="btn btn-primary"
           style={{ marginTop: 6 }}
-          onClick={() => onSave({ ...rule, name: rule.name.trim(), publicReplies: rule.publicReplies.map((s) => s.trim()).filter(Boolean) })}
+          onClick={() =>
+            onSave({
+              ...rule,
+              name: rule.name.trim(),
+              publicReplies: rule.publicReplies.map((s) => s.trim()).filter(Boolean),
+              buttons: rule.buttons.map((b) => (isLink(b) ? { title: b.title.trim(), url: (b.url ?? "").trim() } : { title: b.title.trim(), replyText: (b.replyText ?? "").trim() })),
+            })
+          }
           disabled={saving || !valid}
         >
           {t("Kuralı Kaydet")}

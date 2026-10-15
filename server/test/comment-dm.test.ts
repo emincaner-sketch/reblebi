@@ -311,3 +311,140 @@ test("Facebook sayfa yorumu: özel yanıt graph.facebook.com/{sayfa}/messages ad
   assert.deepEqual(JSON.parse(calls[0].form.recipient), { comment_id: "fc-1" });
   assert.equal(privateRepliesRepo.get(fbPage.id, "fc-1")!.status, "sent");
 });
+
+/* ---------------- Düğmeler ve hızlı cevaplar ---------------- */
+
+const { metaMessagePayload, validateOutboundMessage } = await import("../src/providers/meta/common.js");
+const { createCommentRule } = await import("../src/services/comment-automation.js");
+import type { Ctx } from "../src/core/types.js";
+const ownerCtx: Ctx = { orgId: org.id, userId: user.id, role: "owner", via: "session", locale: "tr" };
+
+test("mesaj biçimi: düz metin, button template ve hızlı cevaplar", () => {
+  assert.deepEqual(metaMessagePayload({ text: "Selam" }), { text: "Selam" });
+  const withButtons = metaMessagePayload({
+    text: "Ne istersin?",
+    buttons: [
+      { type: "postback", title: "Seviye testi", payload: "p1" },
+      { type: "web_url", title: "Siteye git", url: "https://ydsmatik.com" },
+    ],
+    quickReplies: [{ title: "Kelime", payload: "q1" }],
+  });
+  assert.deepEqual(withButtons, {
+    attachment: {
+      type: "template",
+      payload: {
+        template_type: "button",
+        text: "Ne istersin?",
+        buttons: [
+          { type: "postback", title: "Seviye testi", payload: "p1" },
+          { type: "web_url", url: "https://ydsmatik.com", title: "Siteye git" },
+        ],
+      },
+    },
+    quick_replies: [{ content_type: "text", title: "Kelime", payload: "q1" }],
+  });
+});
+
+test("mesaj sınırları: 3 düğme, 13 hızlı cevap, 20 karakter başlık, https, 640 karakter", () => {
+  const pb = (i: number) => ({ type: "postback" as const, title: `B${i}`, payload: `p${i}` });
+  assert.throws(() => validateOutboundMessage({ text: "x", buttons: [pb(1), pb(2), pb(3), pb(4)] }), /3 düğme/);
+  assert.throws(() => validateOutboundMessage({ text: "x", quickReplies: Array.from({ length: 14 }, (_, i) => ({ title: `Q${i}`, payload: `q${i}` })) }), /13 hızlı/);
+  validateOutboundMessage({ text: "x", quickReplies: Array.from({ length: 13 }, (_, i) => ({ title: `Q${i}`, payload: `q${i}` })) });
+  assert.throws(() => validateOutboundMessage({ text: "x", buttons: [{ type: "postback", title: "a".repeat(21), payload: "p" }] }), /20/);
+  validateOutboundMessage({ text: "x", buttons: [{ type: "postback", title: "Öğretmenle konuş 📩", payload: "p" }] });
+  // Emoji iki karakter sayılır (Meta'nın sayımı belirsiz; güvenli taraf)
+  assert.throws(() => validateOutboundMessage({ text: "x", buttons: [{ type: "postback", title: "Öğretmenle konuş 📩📩", payload: "p" }] }), /20/);
+  assert.throws(() => validateOutboundMessage({ text: "x", buttons: [{ type: "web_url", title: "Site", url: "http://ydsmatik.com" }] }), /https/);
+  assert.throws(() => validateOutboundMessage({ text: "a".repeat(641), buttons: [pb(1)] }), /640/);
+  validateOutboundMessage({ text: "a".repeat(641) });
+  assert.throws(() => validateOutboundMessage({ text: "  " }), /boş/);
+});
+
+test("ayrıştırma: düğmeye basma (postback) ve hızlı cevap", () => {
+  const evs = parseMetaWebhook({
+    object: "instagram",
+    entry: [
+      {
+        id: "ig-acc",
+        time: nowSec(),
+        messaging: [
+          { sender: { id: "u-1" }, recipient: { id: "ig-acc" }, timestamp: Date.now(), postback: { mid: "pb-x", title: "Linki gönder", payload: "cr:r1:0" } },
+          { sender: { id: "u-2" }, recipient: { id: "ig-acc" }, timestamp: Date.now(), message: { mid: "m-x", text: "Kelime", quick_reply: { payload: "q1" } } },
+        ],
+      },
+    ],
+  } as never);
+  assert.equal(evs.length, 2);
+  assert.deepEqual(evs[0].postback, { payload: "cr:r1:0", title: "Linki gönder" });
+  assert.equal(evs[0].externalMessageId, "pb-x");
+  assert.equal(evs[0].text, "Linki gönder");
+  assert.deepEqual(evs[1].postback, { payload: "q1", title: "Kelime" });
+});
+
+test("kural doğrulaması: düğme ya bağlantı ya cevap olmalı, https, düğmeli DM 640 karakter", () => {
+  reset();
+  const base = { ...baseRule, enabled: 0 };
+  assert.throws(() => createCommentRule(ownerCtx, { ...base, buttons: [{ title: "İkisi", url: "https://a.com", replyText: "x" }] }), /bağlantı ya da/);
+  assert.throws(() => createCommentRule(ownerCtx, { ...base, buttons: [{ title: "Hiçbiri" }] }), /bağlantı ya da/);
+  assert.throws(() => createCommentRule(ownerCtx, { ...base, buttons: [{ title: "Site", url: "http://a.com" }] }), /https/);
+  assert.throws(() => createCommentRule(ownerCtx, { ...base, dmText: "a".repeat(620), buttons: [{ title: "Site", url: "https://a.com" }] }), /640/);
+  const ok = createCommentRule(ownerCtx, { ...base, buttons: [{ title: "Site", url: "https://a.com" }] });
+  assert.equal(ok.buttons.length, 1);
+});
+
+test("düğmeli ilk DM: button template gider; düğmeye basınca cevap bir kez gönderilir", async () => {
+  reset();
+  const rule = commentRulesRepo.create(org.id, {
+    ...baseRule,
+    publicReplies: [],
+    buttons: [
+      { title: "Linki gönder", replyText: "İşte link: https://ydsmatik.com 🎉" },
+      { title: "Siteye git", url: "https://ydsmatik.com" },
+    ],
+  });
+  await deliver(igComment("b-1", "link?", { from: "u-20" }));
+  await processPrivateReplyQueue();
+  assert.equal(calls.length, 1);
+  const msg = JSON.parse(calls[0].form.message);
+  assert.equal(msg.attachment.payload.template_type, "button");
+  assert.deepEqual(msg.attachment.payload.buttons, [
+    { type: "postback", title: "Linki gönder", payload: `cr:${rule.id}:0` },
+    { type: "web_url", url: "https://ydsmatik.com", title: "Siteye git" },
+  ]);
+  const conv = inboxRepo.findConversation(ig.id, "u-20")!;
+  assert.match(inboxRepo.messages(conv.id, 5)[0].text, /\[Linki gönder\] \[Siteye git\]$/);
+
+  const tap = {
+    object: "instagram",
+    entry: [{ id: "ig-acc", time: nowSec(), messaging: [{ sender: { id: "u-20" }, recipient: { id: "ig-acc" }, timestamp: Date.now(), postback: { mid: "pb-1", title: "Linki gönder", payload: `cr:${rule.id}:0` } }] }],
+  };
+  calls.length = 0;
+  await deliver(tap);
+  await deliver(tap); // Meta aynı olayı tekrar gönderirse
+  const sends = calls.filter((c) => c.path === "/ig-acc/messages");
+  assert.equal(sends.length, 1, "cevap bir kez gitmeli");
+  assert.deepEqual(JSON.parse(sends[0].form.recipient), { id: "u-20" });
+  assert.equal(JSON.parse(sends[0].form.message).text, "İşte link: https://ydsmatik.com 🎉");
+  const texts = inboxRepo.messages(conv.id, 10).map((m) => `${m.direction}:${m.text}`);
+  // Aynı milisaniyedeki mesajların sırası değişebilir; içerik kontrol edilir
+  assert.equal(texts.length, 3);
+  assert.ok(texts.includes("in:Linki gönder"));
+  assert.ok(texts.includes("out:İşte link: https://ydsmatik.com 🎉"));
+});
+
+test("düğmeye basıldığında kural kapalıysa ya da konuşma insandaysa cevap gitmez, ekip görür", async () => {
+  const rule = commentRulesRepo.list(org.id)[0];
+  const tap = (mid: string) => ({
+    object: "instagram",
+    entry: [{ id: "ig-acc", time: nowSec(), messaging: [{ sender: { id: "u-20" }, recipient: { id: "ig-acc" }, timestamp: Date.now(), postback: { mid, title: "Linki gönder", payload: `cr:${rule.id}:0` } }] }],
+  });
+  calls.length = 0;
+  commentRulesRepo.update(org.id, rule.id, { enabled: 0 });
+  await deliver(tap("pb-2"));
+  commentRulesRepo.update(org.id, rule.id, { enabled: 1 });
+  const conv = inboxRepo.findConversation(ig.id, "u-20")!;
+  inboxRepo.setMode(conv.id, "manual");
+  await deliver(tap("pb-3"));
+  assert.equal(calls.filter((c) => c.path === "/ig-acc/messages").length, 0);
+  assert.equal(inboxRepo.getConversationById(conv.id)!.needsAttention, 1);
+});

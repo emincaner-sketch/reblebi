@@ -158,6 +158,10 @@ const tr: Dict = {
   "channel.no_dm": "{provider} mesaj göndermeyi desteklemiyor",
   "comment_rule.provider": "Yorumdan DM'e yalnızca Instagram ve Facebook kanallarında çalışır",
   "comment_rule.pattern": "Anahtar kelime eşleşmesi için en az bir kelime yaz",
+  "comment_rule.buttons": "En fazla 3 düğme eklenebilir",
+  "comment_rule.button_kind": "Her düğme ya bir bağlantı ya da basınca gidecek bir cevap içermeli (ikisi birden değil)",
+  "comment_rule.button_url": "Düğme bağlantısı https:// ile başlamalı",
+  "comment_rule.button_text": "Düğmeli DM en fazla 640 karakter olabilir (otomatik mesaj notu dahil)",
 
   // AI
   "ai.disabled": "AI yapılandırılmamış. Ayarlar > AI bölümünden sağlayıcı ve anahtar ekle.",
@@ -341,6 +345,10 @@ const en: Dict = {
   "channel.no_dm": "{provider} doesn't support sending messages",
   "comment_rule.provider": "Comment-to-DM only works on Instagram and Facebook channels",
   "comment_rule.pattern": "Enter at least one keyword for keyword matching",
+  "comment_rule.buttons": "You can add up to 3 buttons",
+  "comment_rule.button_kind": "Each button needs either a link or a reply to send when tapped (not both)",
+  "comment_rule.button_url": "Button links must start with https://",
+  "comment_rule.button_text": "A DM with buttons can be at most 640 characters (including the automatic-message note)",
 
   "ai.disabled": "AI is not configured. Add a provider and key under Settings > AI.",
   "ai.refused": "The model declined this request",

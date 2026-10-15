@@ -4,7 +4,7 @@ import { channelsRepo } from "../core/repos/channels.js";
 import { commentRulesRepo, privateRepliesRepo, type CommentRuleInput } from "../core/repos/comment-automation.js";
 import { inboxRepo } from "../core/repos/inbox.js";
 import { activityRepo } from "../core/repos/misc.js";
-import type { Channel, CommentRule, Ctx, PrivateReply } from "../core/types.js";
+import type { Channel, CommentRule, Conversation, Ctx, DmButton, PrivateReply } from "../core/types.js";
 import { getProvider, ProviderError, type InboundEvent } from "../providers/index.js";
 import { requireRole } from "./access.js";
 import { matchesKeywords, parseKeywordList } from "./keyword-match.js";
@@ -64,6 +64,25 @@ export function buildDmText(rule: Pick<CommentRule, "dmText" | "botNotice">, par
   return rule.botNotice ? `${body}\n\n${BOT_NOTICE}` : body;
 }
 
+/** Düğmeye basılınca gelen payload: "cr:<kuralId>:<düğme sırası>" */
+const POSTBACK_PREFIX = "cr:";
+
+export function commentButtonPayload(ruleId: string, index: number): string {
+  return `${POSTBACK_PREFIX}${ruleId}:${index}`;
+}
+
+/** Kuralın düğmelerini giden mesaj düğmelerine çevirir (bağlantı ya da basınca cevap) */
+export function buildDmButtons(rule: Pick<CommentRule, "id" | "buttons">): DmButton[] {
+  return rule.buttons.slice(0, 3).map((b, i) =>
+    b.url ? { type: "web_url" as const, title: b.title, url: b.url } : { type: "postback" as const, title: b.title, payload: commentButtonPayload(rule.id, i) },
+  );
+}
+
+/** Gelen kutusunda giden mesajın düğmeleriyle birlikte görünen metni */
+function textWithButtons(text: string, buttons: DmButton[]): string {
+  return buttons.length ? `${text}\n\n${buttons.map((b) => `[${b.title}]`).join(" ")}` : text;
+}
+
 /** Açık cevap varyasyonlarından birini seçer (aynı metin tekrar tekrar görünmesin) */
 export function pickPublicReply(options: string[], random: () => number = Math.random): string | null {
   const list = options.map((o) => o.trim()).filter(Boolean);
@@ -102,6 +121,7 @@ export function enqueueCommentDm(channel: Channel, ev: InboundEvent, now = new D
       commentText: ev.text,
       commentedAt: commentedAt.toISOString(),
       dmText: buildDmText(rule, ev.participantName ?? null),
+      dmButtons: buildDmButtons(rule),
       publicReplyText: pickPublicReply(rule.publicReplies, random),
     },
     now,
@@ -141,7 +161,7 @@ async function sendOne(channel: Channel, item: PrivateReply, now: Date): Promise
   let dmMessageId: string | null;
   try {
     fresh = await ensureFreshToken(channel);
-    dmMessageId = (await provider.sendPrivateReply(fresh, commentId, { text: item.dmText })).externalId ?? null;
+    dmMessageId = (await provider.sendPrivateReply(fresh, commentId, { text: item.dmText, buttons: item.dmButtons })).externalId ?? null;
   } catch (e) {
     const msg = errorText(e);
     const retryable = !(e instanceof ProviderError) || e.retryable;
@@ -163,7 +183,7 @@ async function sendOne(channel: Channel, item: PrivateReply, now: Date): Promise
     participantId: item.commenterId,
     participantName: item.commenterName,
   });
-  inboxRepo.recordOutbound(conv.id, item.dmText, "rule", { externalId: dmMessageId, ruleId: item.ruleId });
+  inboxRepo.recordOutbound(conv.id, textWithButtons(item.dmText, item.dmButtons), "rule", { externalId: dmMessageId, ruleId: item.ruleId });
 
   if (item.publicReplyText && provider.publishComment) {
     try {
@@ -205,13 +225,22 @@ export async function processPrivateReplyQueue(now = new Date()): Promise<{ sent
 
 /* ---------------- Kural yönetimi (panel ve MCP) ---------------- */
 
-function checkRule(ctx: Ctx, r: Pick<CommentRuleInput, "channelId" | "matchType" | "pattern">): void {
+function checkRule(ctx: Ctx, r: Pick<CommentRuleInput, "channelId" | "matchType" | "pattern" | "buttons" | "dmText" | "botNotice">): void {
   if (r.channelId) {
     const ch = channelsRepo.get(ctx.orgId, r.channelId);
     if (!ch) throw notFound("channel");
     if (ch.provider !== "instagram" && ch.provider !== "facebook") throw new AppError(400, "comment_rule.provider");
   }
   if (r.matchType === "keyword" && !parseKeywordList(r.pattern).length) throw new AppError(400, "comment_rule.pattern");
+  const buttons = r.buttons ?? [];
+  if (buttons.length > 3) throw new AppError(400, "comment_rule.buttons");
+  for (const b of buttons) {
+    if (Boolean(b.url) === Boolean(b.replyText?.trim())) throw new AppError(400, "comment_rule.button_kind");
+    if (b.url && !/^https:\/\//.test(b.url)) throw new AppError(400, "comment_rule.button_url");
+  }
+  // Düğmeli mesaj (button template) en fazla 640 karakter; otomatik mesaj notu da sayılır
+  if (buttons.length && buildDmText({ dmText: r.dmText, botNotice: r.botNotice }, "kullanici_adi_30_karakterlik_x").length > 640)
+    throw new AppError(400, "comment_rule.button_text");
 }
 
 /** Yorum kuralı oluşturur. MCP'den gelen kurallar her zaman kapalı oluşur (insan açar). */
@@ -240,4 +269,30 @@ export function deleteCommentRule(ctx: Ctx, id: string): void {
 export function listCommentRules(ctx: Ctx): Array<CommentRule & { stats: ReturnType<typeof privateRepliesRepo.stats> }> {
   const since = new Date(Date.now() - 30 * 86400_000).toISOString();
   return commentRulesRepo.list(ctx.orgId).map((r) => ({ ...r, stats: privateRepliesRepo.stats(ctx.orgId, { ruleId: r.id, since }) }));
+}
+
+/* ---------------- Düğmeye basılınca ---------------- */
+
+/**
+ * Yorumdan DM'e düğmesine (postback) basıldıysa tanımlı cevabı gönderir.
+ * Dönen değer: olay bu özelliğe aitse true (DM kuralları ayrıca çalışmaz).
+ * Kişi düğmeye bastığı için 24 saatlik mesajlaşma penceresi açıktır.
+ */
+export async function handleCommentButton(
+  channel: Channel,
+  conversation: Conversation,
+  payload: string,
+  send: (text: string, ruleId: string) => Promise<unknown>,
+): Promise<boolean> {
+  if (!payload.startsWith(POSTBACK_PREFIX)) return false;
+  const [ruleId, idx] = payload.slice(POSTBACK_PREFIX.length).split(":");
+  const rule = ruleId ? commentRulesRepo.get(channel.orgId, ruleId) : null;
+  const button = rule?.buttons[Number(idx)];
+  const replyText = button?.replyText?.trim();
+  if (!rule?.enabled || !replyText || conversation.mode === "manual") {
+    inboxRepo.flagAttention(conversation.id, true);
+    return true;
+  }
+  await send(replyText, rule.id);
+  return true;
 }

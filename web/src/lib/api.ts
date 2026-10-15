@@ -352,6 +352,8 @@ export interface CommentRule {
   publicReplies: string[];
   includeReplies: number;
   botNotice: number;
+  /** En fazla 3 düğme: bağlantı (url) ya da basınca gidecek cevap (replyText) */
+  buttons: Array<{ title: string; url?: string | null; replyText?: string | null }>;
   priority: number;
   stats?: Record<PrivateReplyStatus, number>;
 }
