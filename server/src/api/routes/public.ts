@@ -11,20 +11,12 @@ import { orgsRepo } from "../../core/repos/orgs.js";
 import { postsRepo } from "../../core/repos/posts.js";
 import { googleLoginEnabled } from "../../services/google-login.js";
 import { facebookLoginEnabled } from "../../services/facebook-login.js";
-import { parseMetaWebhook, parseSignedRequest } from "../../providers/index.js";
+import { parseMetaWebhook, parseSignedRequest, verifyMetaSignature } from "../../providers/index.js";
 import { handleInbound } from "../../services/dm-engine.js";
 import { publicMedia } from "../../services/media.js";
 import { notify } from "../../services/notify.js";
 
 const log = createLogger("public");
-
-function verifyMetaSignature(rawBody: string, header: string | undefined): boolean {
-  if (!config.meta.appSecret) return true; // geliştirme: secret yoksa doğrulama atlanır
-  if (!header?.startsWith("sha256=")) return false;
-  const expected = crypto.createHmac("sha256", config.meta.appSecret).update(rawBody).digest("hex");
-  const given = header.slice(7);
-  return given.length === expected.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
-}
 
 export async function publicRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/health", async () => ({ ok: true, time: new Date().toISOString() }));

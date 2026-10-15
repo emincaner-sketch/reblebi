@@ -1,4 +1,5 @@
 import { config } from "../../core/config.js";
+import { createLogger } from "../../core/logger.js";
 import type { Channel } from "../../core/types.js";
 import { http, sleep } from "../http.js";
 import { ProviderError, type AudienceBreakdown, type ConnectedAccount, type OAuthStart, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
@@ -340,6 +341,11 @@ export const IG_LOGIN_SCOPES = [
   "instagram_business_manage_insights",
 ];
 
+/** Instagram ile giriş hesabı için abone olunan webhook alanları */
+export const IG_WEBHOOK_FIELDS = "messages,messaging_postbacks,message_reactions,comments,live_comments";
+
+const log = createLogger("instagram");
+
 export const instagramLoginFlow = {
   label: "Instagram",
   isConfigured: () => Boolean(config.instagram.appId && config.instagram.appSecret),
@@ -375,11 +381,14 @@ export const instagramLoginFlow = {
     if (me.account_type && !/BUSINESS|CREATOR|MEDIA_CREATOR/i.test(me.account_type)) {
       throw new ProviderError("Bu hesap Profesyonel (İşletme veya İçerik Üreticisi) değil. Instagram uygulamasında Ayarlar > Hesap türü bölümünden profesyonel hesaba geç ve tekrar dene.");
     }
-    // Gelen kutusu için webhook aboneliği (en iyi çaba: uygulama modu/izin yüzünden başarısız olabilir)
+    // Gelen kutusu için webhook aboneliği (en iyi çaba: uygulama modu/izin yüzünden başarısız olabilir).
+    // Hata bağlantıyı durdurmaz ama kanal bilgisine ve loga yazılır; abonelik sonradan Meta panelinden de yapılabilir.
+    let webhookSubscribeError: string | null = null;
     try {
-      await graph(`/${igId}/subscribed_apps`, token, { method: "POST", params: { subscribed_fields: "messages,messaging_postbacks,message_reactions,comments,live_comments" }, base: IG_GRAPH() });
-    } catch {
-      /* abonelik sonradan Meta panelinden de yapılabilir */
+      await graph(`/${igId}/subscribed_apps`, token, { method: "POST", params: { subscribed_fields: IG_WEBHOOK_FIELDS }, base: IG_GRAPH() });
+    } catch (e) {
+      webhookSubscribeError = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log.warn("Instagram webhook aboneliği yapılamadı", { igId, error: webhookSubscribeError });
     }
     return [
       {
@@ -391,7 +400,7 @@ export const instagramLoginFlow = {
         accessToken: token,
         tokenExpiresAt: long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null,
         scopes: IG_LOGIN_SCOPES.join(","),
-        metadata: { igLogin: true, igUserId: igId, accountType: me.account_type ?? null },
+        metadata: { igLogin: true, igUserId: igId, accountType: me.account_type ?? null, webhookSubscribeError },
       },
     ];
   },

@@ -168,6 +168,27 @@ export async function sendPageMessage(pageId: string, token: string, recipientId
   return r.message_id ?? null;
 }
 
+/**
+ * Meta webhook imzası (X-Hub-Signature-256 = "sha256=" + HMAC-SHA256(ham gövde)).
+ * Facebook/Messenger olayları Meta uygulamasının, "Instagram ile giriş" olayları Instagram ürününün
+ * kendi App Secret'ı ile imzalanır; tanımlı anahtarlardan biri tutarsa kabul edilir.
+ * Hiç anahtar yoksa (yerel geliştirme) doğrulama atlanır.
+ */
+export function verifyMetaSignature(
+  rawBody: string,
+  header: string | undefined,
+  secrets: Array<string | undefined> = [config.meta.appSecret, config.instagram.appSecret],
+): boolean {
+  const keys = [...new Set(secrets.filter((k): k is string => Boolean(k)))];
+  if (!keys.length) return true;
+  if (!header?.startsWith("sha256=")) return false;
+  const given = Buffer.from(header.slice(7).toLowerCase());
+  return keys.some((key) => {
+    const expected = Buffer.from(crypto.createHmac("sha256", key).update(rawBody, "utf8").digest("hex"));
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  });
+}
+
 /** Meta signed_request: base64url(imza).base64url(json), HMAC-SHA256(app secret) */
 export function parseSignedRequest(signed: string): { user_id?: string; algorithm?: string } | null {
   const [sig, payload] = signed.split(".");

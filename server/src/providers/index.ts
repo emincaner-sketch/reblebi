@@ -31,7 +31,7 @@ import type { Provider } from "./types.js";
 
 export * from "./types.js";
 export { parseMetaWebhook, lookupParticipant } from "./meta/webhook.js";
-export { parseSignedRequest } from "./meta/common.js";
+export { parseSignedRequest, verifyMetaSignature } from "./meta/common.js";
 
 const registry: Record<ProviderId, Provider> = {
   instagram: instagramProvider,

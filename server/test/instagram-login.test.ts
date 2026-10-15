@@ -19,6 +19,7 @@ const { describeProvider } = await import("../src/providers/index.js");
 const { xProvider } = await import("../src/providers/x.js");
 
 const seen: URL[] = [];
+let failSubscribe = false;
 const j = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: string | URL | Request) => {
@@ -28,7 +29,8 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   if (u.hostname === "graph.instagram.com") {
     if (u.pathname === "/access_token") return j({ access_token: "long", expires_in: 5_184_000 });
     if (u.pathname.endsWith("/me")) return j({ id: "app-scoped", user_id: "17841400", username: "leblebi", name: "Leblebi", profile_picture_url: "https://x/p.jpg", account_type: "BUSINESS" });
-    if (u.pathname.endsWith("/subscribed_apps")) return j({ success: true });
+    if (u.pathname.endsWith("/subscribed_apps"))
+      return failSubscribe ? j({ error: { message: "(#200) Application does not have permission for this action", code: 200 } }, 403) : j({ success: true });
     if (u.pathname === "/refresh_access_token") return j({ access_token: "refreshed", expires_in: 5_184_000 });
     if (u.pathname.endsWith("/media")) return j({ id: "container-1" });
     if (u.pathname.endsWith("/container-1")) return j({ status_code: "FINISHED" });
@@ -90,6 +92,19 @@ test("Instagram Login: yetkilendirme adresi ve hesap bağlama", async () => {
   assert.equal(a.metadata?.igLogin, true);
   assert.ok(a.tokenExpiresAt);
   assert.ok(seen.some((s) => s.pathname.endsWith("/subscribed_apps")), "webhook aboneliği denenmeli");
+  assert.equal(a.metadata?.webhookSubscribeError, null);
+});
+
+test("Instagram Login: webhook aboneliği başarısızsa hesap yine bağlanır, hata kanala yazılır", async () => {
+  failSubscribe = true;
+  try {
+    const [a] = await instagramLoginFlow.oauthCallback("code2", "https://reblebi.test/api/oauth/instagram-login/callback");
+    assert.equal(a.externalId, "17841400");
+    assert.match(String(a.metadata?.webhookSubscribeError), /permission/);
+    assert.ok(!String(a.metadata?.webhookSubscribeError).includes("long"), "hata metninde jeton olmamalı");
+  } finally {
+    failSubscribe = false;
+  }
 });
 
 test("Instagram Login kanalı graph.instagram.com üzerinden yayınlar ve jetonu yeniler", async () => {
