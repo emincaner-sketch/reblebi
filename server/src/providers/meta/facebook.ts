@@ -2,7 +2,7 @@ import { config } from "../../core/config.js";
 import type { Channel } from "../../core/types.js";
 import { http } from "../http.js";
 import { ProviderError, type AudienceBreakdown, type Provider, type PublishInput, type PublishResult } from "../types.js";
-import { fetchInsights, GRAPH, graph, insightNumber, metaOAuthCallback, metaOAuthStart, sendPageMessage } from "./common.js";
+import { fetchInsights, GRAPH, graph, insightNumber, metaOAuthCallback, metaOAuthStart, sendCommentPrivateReply, sendPageMessage } from "./common.js";
 
 async function uploadUnpublishedPhoto(pageId: string, token: string, url: string): Promise<string> {
   const r = await graph<{ id: string }>(`/${pageId}/photos`, token, { method: "POST", params: { url, published: false } });
@@ -133,6 +133,10 @@ export const facebookProvider: Provider = {
   async sendMessage({ channel, participantId, text }) {
     const id = await sendPageMessage(channel.externalId, channel.accessToken, participantId, text);
     return { externalId: id };
+  },
+
+  async sendPrivateReply(channel, commentId, message) {
+    return { externalId: await sendCommentPrivateReply(channel.externalId, channel.accessToken, commentId, message) };
   },
 
   async fetchMetrics(channel: Channel) {

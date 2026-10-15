@@ -152,8 +152,15 @@ export interface Provider {
    * parentExternalId: ana gönderinin id'si; replyToExternalId: zincirde bir önceki yorum (varsa)
    */
   publishComment?(channel: Channel, parentExternalId: string, text: string, replyToExternalId?: string | null): Promise<{ externalId: string }>;
+  /** Gönderi yorumuna özel DM (private reply, recipient: comment_id): yorum başına tek mesaj, yorumdan sonraki 7 gün içinde */
+  sendPrivateReply?(channel: Channel, commentId: string, message: OutboundMessage): Promise<{ externalId?: string | null }>;
   /** Kanal sağlığı: token geçerli mi */
   healthCheck?(channel: Channel): Promise<{ ok: boolean; detail?: string }>;
+}
+
+/** Otomatik giden mesaj içeriği (ileride düğmeler ve hızlı cevaplar eklenecek) */
+export interface OutboundMessage {
+  text: string;
 }
 
 export class ProviderError extends Error {

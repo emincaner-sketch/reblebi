@@ -248,7 +248,7 @@ export const orgsRepo = {
       db.prepare("DELETE FROM analytics_snapshots WHERE channel_id = ?").run(cid);
       db.prepare("DELETE FROM poll_cursors WHERE channel_id = ?").run(cid);
     }
-    for (const table of ["channels", "posts", "media", "conversations", "auto_reply_rules", "api_keys", "activity_log", "comment_jobs", "usage_counters", "oauth_tokens", "oauth_codes"]) {
+    for (const table of ["channels", "posts", "media", "conversations", "auto_reply_rules", "comment_rules", "private_replies", "api_keys", "activity_log", "comment_jobs", "usage_counters", "oauth_tokens", "oauth_codes"]) {
       db.prepare(`DELETE FROM ${table} WHERE org_id = ?`).run(id);
     }
     db.prepare("DELETE FROM organizations WHERE id = ?").run(id);

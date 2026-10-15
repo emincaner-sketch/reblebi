@@ -692,6 +692,59 @@ export const MIGRATIONS: Migration[] = [
     );
     `,
   },
+  {
+    // Yorumdan DM'e: kurala uyan yoruma özel yanıt (private reply). Yorum başına tek kayıt (webhook tekrarları),
+    // kişi başına gönderi başına tek kayıt (ilk uyan yorum); kuyruk veritabanında, sunucu yeniden başlasa da kaybolmaz.
+    id: 20,
+    sql: `
+    CREATE TABLE IF NOT EXISTS comment_rules (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      channel_id TEXT,
+      media_ids TEXT NOT NULL DEFAULT '[]',
+      match_type TEXT NOT NULL DEFAULT 'keyword',
+      pattern TEXT,
+      dm_text TEXT NOT NULL,
+      public_replies TEXT NOT NULL DEFAULT '[]',
+      include_replies INTEGER NOT NULL DEFAULT 0,
+      bot_notice INTEGER NOT NULL DEFAULT 1,
+      priority INTEGER NOT NULL DEFAULT 100,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_comment_rules_org ON comment_rules(org_id, priority);
+    CREATE TABLE IF NOT EXISTS private_replies (
+      channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      comment_id TEXT NOT NULL,
+      org_id TEXT NOT NULL,
+      rule_id TEXT,
+      media_id TEXT NOT NULL,
+      commenter_id TEXT NOT NULL,
+      commenter_name TEXT,
+      comment_text TEXT NOT NULL DEFAULT '',
+      commented_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      last_attempt_at TEXT,
+      dm_text TEXT NOT NULL,
+      dm_message_id TEXT,
+      public_reply_text TEXT,
+      public_reply_id TEXT,
+      public_reply_error TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      sent_at TEXT,
+      PRIMARY KEY (channel_id, comment_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_once_per_post ON private_replies(channel_id, media_id, commenter_id);
+    CREATE INDEX IF NOT EXISTS idx_pr_queue ON private_replies(status, next_attempt_at);
+    CREATE INDEX IF NOT EXISTS idx_pr_attempts ON private_replies(channel_id, last_attempt_at);
+    CREATE INDEX IF NOT EXISTS idx_pr_org ON private_replies(org_id, created_at);
+    `,
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

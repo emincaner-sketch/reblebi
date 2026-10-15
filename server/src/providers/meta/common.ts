@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { config } from "../../core/config.js";
 import { http, sleep } from "../http.js";
-import { ProviderError, type ConnectedAccount, type OAuthStart } from "../types.js";
+import { ProviderError, type ConnectedAccount, type OAuthStart, type OutboundMessage } from "../types.js";
 
 export const GRAPH = () => `https://graph.facebook.com/${config.meta.graphVersion}`;
 /** Instagram Login ile bağlanan hesaplar graph.facebook.com yerine graph.instagram.com'a gider */
@@ -187,6 +187,16 @@ export function verifyMetaSignature(
     const expected = Buffer.from(crypto.createHmac("sha256", key).update(rawBody, "utf8").digest("hex"));
     return given.length === expected.length && crypto.timingSafeEqual(given, expected);
   });
+}
+
+/** Yorum sahibine özel yanıt: /{hesap}/messages, alıcı yorum kimliği (Messenger ve Instagram aynı biçim) */
+export async function sendCommentPrivateReply(accountId: string, token: string, commentId: string, message: OutboundMessage, base?: string): Promise<string | null> {
+  const r = await graph<{ message_id?: string }>(`/${accountId}/messages`, token, {
+    method: "POST",
+    params: { recipient: { comment_id: commentId }, message: { text: message.text } },
+    base,
+  });
+  return r.message_id ?? null;
 }
 
 /** Meta signed_request: base64url(imza).base64url(json), HMAC-SHA256(app secret) */

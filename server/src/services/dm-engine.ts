@@ -9,6 +9,7 @@ import type { AutoReplyRule, Channel, Conversation, Ctx, Message, OrgSettings, P
 import { aiAvailable, draftReply } from "../ai/index.js";
 import { getProvider, lookupParticipant, type InboundEvent } from "../providers/index.js";
 import { requireRole } from "./access.js";
+import { enqueueCommentDm } from "./comment-automation.js";
 import { matchesKeywords } from "./keyword-match.js";
 import { hasFeature } from "./limits.js";
 import { emitWebhook, notify, orgT } from "./notify.js";
@@ -175,6 +176,14 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
       inboxRepo.mergeMetadata(conversation.id, ev.kind === "review" ? { rating: ev.metadata.rating ?? null } : { commentId: ev.metadata.commentId, parentId: ev.metadata.parentId ?? null });
     inboxRepo.flagAttention(conversation.id, true);
     emitWebhook(channel.orgId, "message.received", { conversationId: conversation.id, channelId: channel.id, provider, kind: ev.kind, from: conversation.participantName ?? conversation.participantId, text: message.text });
+    // Yorumdan DM'e: kurala uyan yorum kuyruğa eklenir (gönderimi zamanlayıcı yapar); hata gelen kutusunu etkilemesin
+    if (ev.kind === "comment") {
+      try {
+        enqueueCommentDm(channel, ev);
+      } catch (e) {
+        log.error("yorumdan DM kuyruğa eklenemedi", { channel: channel.id, e: e instanceof Error ? e.message : e });
+      }
+    }
     return;
   }
   emitWebhook(channel.orgId, "message.received", {

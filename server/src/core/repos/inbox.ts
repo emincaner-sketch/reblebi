@@ -158,6 +158,21 @@ export const inboxRepo = {
     const message = rowToMessage(db.prepare("SELECT * FROM messages WHERE id = ?").get(mid) as Row);
     return { conversation: conv, message, created };
   },
+  /** Mesaj kaydetmeden konuşmayı bulur ya da açar (ör. yorumdan DM'e ilk giden mesaj için) */
+  ensureConversation(input: { orgId: string; channelId: string; externalId: string; participantId: string; participantName?: string | null }): Conversation {
+    const existing = this.findConversation(input.channelId, input.externalId);
+    if (existing) return existing;
+    const id = randomId("conv");
+    const now = nowIso();
+    getDb()
+      .prepare(
+        `INSERT INTO conversations (id, org_id, channel_id, external_id, participant_id, participant_name, participant_avatar,
+         last_message_at, last_message_preview, unread, mode, status, needs_attention, metadata, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL, 0, 'auto', 'open', 0, '{}', ?)`,
+      )
+      .run(id, input.orgId, input.channelId, input.externalId, input.participantId, input.participantName ?? null, now, now);
+    return this.getConversationById(id)!;
+  },
   /** Konuşma metadata alanına alan ekler/günceller (ör. yorum konusunda son yorum kimliği) */
   mergeMetadata(conversationId: string, patch: Record<string, unknown>): void {
     const db = getDb();

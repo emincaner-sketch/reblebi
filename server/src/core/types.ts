@@ -276,6 +276,56 @@ export interface AutoReplyRule {
   updatedAt: string;
 }
 
+/** Yorumdan DM'e kuralı: kurala uyan gönderi yorumuna özel yanıt (private reply) ve isteğe bağlı açık yorum cevabı */
+export interface CommentRule {
+  id: string;
+  orgId: string;
+  name: string;
+  enabled: number;
+  /** Boşsa çalışma alanındaki tüm Instagram/Facebook kanalları */
+  channelId: string | null;
+  /** Boşsa tüm gönderiler */
+  mediaIds: string[];
+  matchType: "any" | "keyword";
+  pattern: string | null;
+  dmText: string;
+  /** Açık yorum cevabı varyasyonları; boşsa açık cevap yazılmaz */
+  publicReplies: string[];
+  /** 0: yalnızca üst seviye yorumlar tetikler, 1: yorumlara yazılan cevaplar da */
+  includeReplies: number;
+  /** 1: DM'in sonuna "otomatik mesaj" notu eklenir */
+  botNotice: number;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PrivateReplyStatus = "queued" | "sending" | "sent" | "failed" | "skipped" | "expired";
+
+export interface PrivateReply {
+  channelId: string;
+  commentId: string;
+  orgId: string;
+  ruleId: string | null;
+  mediaId: string;
+  commenterId: string;
+  commenterName: string | null;
+  commentText: string;
+  commentedAt: string;
+  status: PrivateReplyStatus;
+  attempts: number;
+  nextAttemptAt: string;
+  lastAttemptAt: string | null;
+  dmText: string;
+  dmMessageId: string | null;
+  publicReplyText: string | null;
+  publicReplyId: string | null;
+  publicReplyError: string | null;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
 export interface ApiKey {
   id: string;
   orgId: string;

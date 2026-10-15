@@ -170,6 +170,7 @@ import { purgeSeen } from "./site-analytics.js";
 import { sendScheduledDashboards } from "./dashboard-email.js";
 import { runDueListening } from "./listening.js";
 import { snapshotRadar } from "./radar.js";
+import { processPrivateReplyQueue } from "./comment-automation.js";
 
 export function startScheduler(): void {
   stopScheduler();
@@ -199,6 +200,8 @@ export function startScheduler(): void {
   timers.push(setInterval(() => void guarded("listening", async () => void (await runDueListening())), 10 * 60_000));
   // Web sitesi analitiği: 2 günden eski tekil-ziyaretçi hash'leri silinir
   timers.push(setInterval(() => void guarded("site-seen", async () => purgeSeen()), 6 * 60 * 60_000));
+  // Yorumdan DM'e: kuyruktaki özel yanıtlar (kanal başına saatlik sınırla)
+  timers.push(setInterval(() => void guarded("private-replies", async () => void (await processPrivateReplyQueue())), 10_000));
   // Otomatik listeler: dakikada bir vakti gelen slot (oluşan gönderiyi yayın kuyruğu yayınlar)
   timers.push(setInterval(() => void guarded("autolists", async () => void (await runAutolists())), 60_000));
   setTimeout(() => void tickPublish(), 3_000);
