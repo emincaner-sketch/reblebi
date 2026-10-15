@@ -18,6 +18,7 @@ import {
   History,
   Layers,
   Mail,
+  MessageCircle,
   MessageSquare,
   Pencil,
   Play,
@@ -56,8 +57,9 @@ import { useI18n } from "../lib/i18n";
 import { useSession } from "../lib/session";
 import { Can, Empty, FeatureGate, Modal, PageHead, ProviderIcon, Stat, useToast } from "../components/ui";
 import { copyText } from "../lib/clipboard";
+import { CommentToDmTab } from "../panel/automation/CommentToDm";
 
-type TabMode = "workflows" | "rules" | "settings";
+type TabMode = "workflows" | "rules" | "comments" | "settings";
 type EditingRule = Omit<Rule, "id"> & { id?: string };
 
 const EMPTY_RULE: Omit<Rule, "id"> = {
@@ -320,6 +322,9 @@ export default function AutomationPage() {
         </button>
         <button className={activeTab === "rules" ? "active" : ""} onClick={() => setActiveTab("rules")}>
           <MessageSquare style={{ width: 15 }} /> {t("DM Oto-Yanıt Kuralları")}
+        </button>
+        <button className={activeTab === "comments" ? "active" : ""} onClick={() => setActiveTab("comments")}>
+          <MessageCircle style={{ width: 15 }} /> {t("Yorumdan DM'e")}
         </button>
         <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>
           <Clock style={{ width: 15 }} /> {t("Çalışma Saatleri & Yedek Yanıt")}
@@ -670,6 +675,8 @@ export default function AutomationPage() {
           )}
         </div>
       )}
+
+      {activeTab === "comments" && <CommentToDmTab channels={channels.data ?? []} inboxEnabled={features?.inbox !== false} />}
 
       {/* ============================================================
           SEKME 3: ÇALIŞMA SAATLERİ & YEDEK YANIT

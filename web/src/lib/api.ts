@@ -339,6 +339,44 @@ export interface Rule {
   handoffToHuman: number;
 }
 
+/** Yorumdan DM'e kuralı (sunucudaki CommentRule ile aynı) */
+export interface CommentRule {
+  id: string;
+  name: string;
+  enabled: number;
+  channelId: string | null;
+  mediaIds: string[];
+  matchType: "any" | "keyword";
+  pattern: string | null;
+  dmText: string;
+  publicReplies: string[];
+  includeReplies: number;
+  botNotice: number;
+  priority: number;
+  stats?: Record<PrivateReplyStatus, number>;
+}
+
+export type PrivateReplyStatus = "queued" | "sending" | "sent" | "failed" | "skipped" | "expired";
+
+export interface PrivateReply {
+  channelId: string;
+  commentId: string;
+  ruleId: string | null;
+  mediaId: string;
+  commenterId: string;
+  commenterName: string | null;
+  commentText: string;
+  commentedAt: string;
+  status: PrivateReplyStatus;
+  attempts: number;
+  dmText: string;
+  publicReplyText: string | null;
+  publicReplyError: string | null;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
 export type AiProviderKind = "platform" | "anthropic" | "openai" | "xai" | "gemini" | "openrouter" | "custom";
 
 export interface OrgSettings {
