@@ -2,6 +2,7 @@ import { config } from "../core/config.js";
 import { AppError, notFound } from "../core/i18n.js";
 import { createLogger } from "../core/logger.js";
 import { channelsRepo } from "../core/repos/channels.js";
+import { contactsRepo } from "../core/repos/contacts.js";
 import { inboxRepo } from "../core/repos/inbox.js";
 import { activityRepo, rulesRepo } from "../core/repos/misc.js";
 import { orgSettingsRepo, orgsRepo } from "../core/repos/orgs.js";
@@ -11,6 +12,7 @@ import { getProvider, lookupParticipant, type InboundEvent } from "../providers/
 import { requireRole } from "./access.js";
 import { enqueueCommentDm, handleCommentButton } from "./comment-automation.js";
 import { matchesKeywords } from "./keyword-match.js";
+import { sendDecisionFor } from "./messaging-policy.js";
 import { hasFeature } from "./limits.js";
 import { emitWebhook, notify, orgT } from "./notify.js";
 import { ensureFreshToken } from "./publisher.js";
@@ -65,9 +67,15 @@ export async function sendReply(channel: Channel, conversation: Conversation, te
   if (conversation.metadata.kind === "comment") return sendCommentReply(channel, conversation, text, sentBy);
   if (conversation.metadata.kind === "review") return sendReviewReply(channel, conversation, text, sentBy);
   if (!provider.sendMessage) throw new AppError(400, "channel.no_dm", { provider: provider.label });
+  // Meta kuralları: 24 saat penceresi, insan cevabı için 7 güne kadar HUMAN_AGENT, çıkış listesi
+  const decision = sendDecisionFor(channel, conversation, sentBy);
+  if (!decision.ok) {
+    if (sentBy === "user") throw new AppError(400, `messaging.${decision.code}`);
+    return inboxRepo.recordOutbound(conversation.id, text, sentBy, { ruleId, status: "failed", error: decision.message });
+  }
   try {
     const fresh = await ensureFreshToken(channel);
-    const r = await provider.sendMessage({ channel: fresh, conversationExternalId: conversation.externalId, participantId: conversation.participantId, text });
+    const r = await provider.sendMessage({ channel: fresh, conversationExternalId: conversation.externalId, participantId: conversation.participantId, text, tag: decision.tag });
     return inboxRepo.recordOutbound(conversation.id, text, sentBy, { externalId: r.externalId ?? null, ruleId, status: "sent" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -200,10 +208,22 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
     return;
   }
 
+  const settings = orgSettingsRepo.get(channel.orgId);
+
+  // Çıkış listesi: listedeki kişiye otomatik mesaj gitmez, ekip görür
+  if (contactsRepo.isOptedOut(channel.id, conversation.participantId)) {
+    inboxRepo.flagAttention(conversation.id, true);
+    return;
+  }
+  // "durdur / stop" yazan kişi çıkış listesine girer; istenirse bir kez onay mesajı gider
+  if (matchesKeywords(settings.optOutKeywords, message.text)) {
+    await optOut(channel, conversation, message.text, settings);
+    return;
+  }
+
   // Yorumdan DM'e düğmesine basıldıysa tanımlı cevap gider; DM kuralları ayrıca çalışmaz
   if (ev.postback && (await handleCommentButton(channel, conversation, ev.postback.payload, (text, ruleId) => sendReply(channel, conversation, text, "rule", ruleId)))) return;
 
-  const settings = orgSettingsRepo.get(channel.orgId);
   if (containsHandoffKeyword(message.text, settings)) {
     inboxRepo.setMode(conversation.id, "manual");
     inboxRepo.flagAttention(conversation.id, true);
@@ -219,6 +239,17 @@ async function handleForChannel(channel: Channel, provider: ProviderId, ev: Inbo
   setTimeout(() => {
     autoRespond(channel, conversation.id, message).catch((e) => log.error("oto-yanıt hatası", { e: e instanceof Error ? e.message : e }));
   }, delay);
+}
+
+async function optOut(channel: Channel, conversation: Conversation, text: string, settings: OrgSettings): Promise<void> {
+  if (settings.optOutReply.trim()) {
+    const vars = { name: conversation.participantName ?? "", platform: channel.provider, kanal: channel.name, channel: channel.name };
+    await sendReply(channel, conversation, renderTemplate(settings.optOutReply, vars).trim(), "rule");
+  }
+  contactsRepo.setOptOut(channel.orgId, channel.id, conversation.participantId, new Date().toISOString(), text.slice(0, 200));
+  inboxRepo.setMode(conversation.id, "manual");
+  inboxRepo.flagAttention(conversation.id, true);
+  activityRepo.add(channel.orgId, "info", "dm", `${channel.name}: ${conversation.participantName ?? conversation.participantId} otomatik mesajları durdurdu`, { conversationId: conversation.id });
 }
 
 async function aiReply(channel: Channel, conversation: Conversation, instructions?: string | null) {

@@ -3,7 +3,7 @@ import { createLogger } from "../../core/logger.js";
 import type { Channel } from "../../core/types.js";
 import { http, sleep } from "../http.js";
 import { ProviderError, type AudienceBreakdown, type ConnectedAccount, type OAuthStart, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "../types.js";
-import { channelBase, fetchInsights, GRAPH, graph, IG_GRAPH, insightBreakdown, insightNumber, metaOAuthCallback, metaOAuthStart, sendCommentPrivateReply, sendPageMessage, waitForContainer } from "./common.js";
+import { channelBase, fetchInsights, GRAPH, graph, IG_GRAPH, insightBreakdown, insightNumber, metaOAuthCallback, messagingTypeParams, metaOAuthStart, sendCommentPrivateReply, sendPageMessage, waitForContainer } from "./common.js";
 
 async function createContainer(igId: string, token: string, params: Record<string, unknown>, base?: string): Promise<string> {
   const r = await graph<{ id: string }>(`/${igId}/media`, token, { method: "POST", params, base });
@@ -123,17 +123,17 @@ export const instagramProvider: Provider = {
     return publishContainer(igId, token, parent, base);
   },
 
-  async sendMessage({ channel, participantId, text }) {
+  async sendMessage({ channel, participantId, text, tag }) {
     if (channel.metadata.igLogin) {
       const r = await graph<{ message_id?: string }>(`/${channel.externalId}/messages`, channel.accessToken, {
         method: "POST",
-        params: { recipient: { id: participantId }, message: { text } },
+        params: { recipient: { id: participantId }, message: { text }, ...messagingTypeParams(tag) },
         base: IG_GRAPH(),
       });
       return { externalId: r.message_id ?? null };
     }
     const pageId = (channel.metadata.pageId as string) || channel.externalId;
-    const id = await sendPageMessage(pageId, channel.accessToken, participantId, text);
+    const id = await sendPageMessage(pageId, channel.accessToken, participantId, text, tag);
     return { externalId: id };
   },
 

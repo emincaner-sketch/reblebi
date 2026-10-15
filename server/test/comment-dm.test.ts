@@ -39,6 +39,8 @@ interface Call {
   form: Record<string, string>;
 }
 const calls: Call[] = [];
+/** Mesaj kimliği sayacı (calls testlerde sıfırlanır; aynı konuşmada kimlik tekrar etmesin) */
+let midSeq = 0;
 /** Sıradaki yanıtlar (boşsa başarılı) */
 let failures: Array<{ status: number; body: unknown }> = [];
 const realFetch = globalThis.fetch;
@@ -48,7 +50,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   calls.push({ host: u.hostname, path: u.pathname.replace(/^\/v[\d.]+/, ""), form });
   const fail = failures.shift();
   if (fail) return new Response(JSON.stringify(fail.body), { status: fail.status });
-  if (u.pathname.endsWith("/messages")) return new Response(JSON.stringify({ recipient_id: "r", message_id: `mid-${calls.length}` }), { status: 200 });
+  if (u.pathname.endsWith("/messages")) return new Response(JSON.stringify({ recipient_id: "r", message_id: `mid-${++midSeq}` }), { status: 200 });
   return new Response(JSON.stringify({ id: `pub-${calls.length}` }), { status: 200 });
 }) as typeof fetch;
 test.after(() => {

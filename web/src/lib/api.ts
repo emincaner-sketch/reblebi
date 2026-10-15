@@ -398,6 +398,10 @@ export interface OrgSettings {
   handoffKeywords: string;
   replyDelaySeconds: number;
   welcomeMessage: string;
+  /** Çıkış kelimeleri: yazan kişiye bir daha otomatik mesaj gitmez */
+  optOutKeywords: string;
+  /** Çıkışta bir kez gönderilen onay mesajı (boşsa gönderilmez) */
+  optOutReply: string;
   approvalMode: "none" | "ai" | "all";
   defaultPostingTimes: string[];
   minGapMinutes: number;

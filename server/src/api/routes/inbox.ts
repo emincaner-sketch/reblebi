@@ -9,10 +9,11 @@ import { membershipsRepo } from "../../core/repos/orgs.js";
 import { aiAvailable, draftReply, summarizeConversations } from "../../ai/index.js";
 import { requireRole } from "../../services/access.js";
 import { createCommentRule, deleteCommentRule, listCommentRules, updateCommentRule } from "../../services/comment-automation.js";
+import { getContact, updateContact } from "../../services/contacts.js";
 import { handleInbound, replyToConversation } from "../../services/dm-engine.js";
 import { assertFeature } from "../../services/limits.js";
 import { ctxOf, requireCtx } from "../context.js";
-import { CommentRulePatchSchema, CommentRuleSchema, RulePatchSchema, RuleSchema } from "../schemas.js";
+import { CommentRulePatchSchema, CommentRuleSchema, ContactPatchSchema, RulePatchSchema, RuleSchema } from "../schemas.js";
 
 const Id = z.object({ id: z.string() });
 
@@ -63,6 +64,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
     return inboxRepo.getConversation(ctx.orgId, id);
   });
+
+  /* Kişi kartı */
+  app.get("/api/inbox/conversations/:id/contact", async (req) => getContact(ctxOf(req), Id.parse(req.params).id));
+
+  app.put("/api/inbox/conversations/:id/contact", async (req) => updateContact(ctxOf(req), Id.parse(req.params).id, ContactPatchSchema.parse(req.body ?? {})));
 
   app.post("/api/inbox/conversations/:id/reply", async (req) => {
     const { text } = z.object({ text: z.string().min(1).max(4000) }).parse(req.body);

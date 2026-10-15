@@ -47,6 +47,8 @@ const SettingsSchema = z.object({
   handoffKeywords: z.string().max(1000).optional(),
   replyDelaySeconds: z.number().int().min(0).max(60).optional(),
   welcomeMessage: z.string().max(2000).optional(),
+  optOutKeywords: z.string().max(1000).optional(),
+  optOutReply: z.string().max(1000).optional(),
   approvalMode: z.enum(["none", "ai", "all"]).optional(),
   defaultPostingTimes: z.array(z.string().regex(/^\d{1,2}:\d{2}$/)).max(24).optional(),
   minGapMinutes: z.number().int().min(0).max(1440).optional(),

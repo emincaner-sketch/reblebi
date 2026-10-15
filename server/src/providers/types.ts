@@ -102,6 +102,8 @@ export interface SendMessageInput {
   conversationExternalId: string;
   participantId: string;
   text: string;
+  /** 24 saat geçtiyse insan cevabı için Meta mesaj etiketi (7 güne kadar) */
+  tag?: "HUMAN_AGENT";
 }
 
 export interface SettingField {

@@ -311,6 +311,21 @@ export interface CommentRuleButton {
 /** Giden mesaj düğmesi (sağlayıcıdaki MessageButton ile aynı biçim) */
 export type DmButton = { type: "postback"; title: string; payload: string } | { type: "web_url"; title: string; url: string };
 
+/** Kişi kartı: bir kanalda mesajlaşan kişi */
+export interface Contact {
+  channelId: string;
+  participantId: string;
+  orgId: string;
+  tags: string[];
+  /** Serbest alanlar, ör. { seviye: "B1", eposta: "a@b.com" } */
+  fields: Record<string, string>;
+  /** "durdur/stop" yazdıysa: bu kişiye otomatik mesaj gönderilmez */
+  optedOutAt: string | null;
+  optedOutReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type PrivateReplyStatus = "queued" | "sending" | "sent" | "failed" | "skipped" | "expired";
 
 export interface PrivateReply {
@@ -503,6 +518,10 @@ export interface OrgSettings {
   reportRecipients: string;
   /** Son gönderilen özetin dönemi (aynı dönem iki kez gönderilmesin), ör. "weekly:2026-09-28" */
   reportLastSent: string;
+  /** Çıkış (opt-out) kelimeleri: yazan kişiye bir daha otomatik mesaj gönderilmez (tam kelime, * ile ek) */
+  optOutKeywords: string;
+  /** Çıkışta bir kez gönderilen onay mesajı; boşsa gönderilmez */
+  optOutReply: string;
 }
 
 export const DEFAULT_ORG_SETTINGS: OrgSettings = {
@@ -537,6 +556,8 @@ export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   reportEmail: "off",
   reportRecipients: "",
   reportLastSent: "",
+  optOutKeywords: "stop, durdur, abonelikten çık*, unsubscribe, mesaj istemiyorum, otomatik mesaj gönderme*",
+  optOutReply: "",
 };
 
 /** Dil bazlı akıllı varsayılanlar (yeni org açılırken) */
@@ -546,11 +567,14 @@ export function localizedDefaults(locale: Locale): Partial<OrgSettings> {
         aiReplyInstructions: "Give short, friendly, helpful replies. If you don't know something, say the team will get back soon.",
         outsideHoursMessage: "Hi! We got your message and will reply during business hours.",
         handoffKeywords: "human, agent, manager, complaint, refund",
+        optOutKeywords: "stop, unsubscribe, opt out, durdur",
+        optOutReply: "Got it, we won't send you automated messages anymore. Our team can still reply here if needed. (This message was sent automatically.)",
       }
     : {
         aiReplyInstructions: "Kısa, samimi, yardımcı yanıtlar ver. Bilmediğin bir konuda 'ekibimiz en kısa sürede dönüş yapacak' de.",
         outsideHoursMessage: "Merhaba! Mesajınızı aldık, çalışma saatlerimiz içinde en kısa sürede dönüş yapacağız.",
         handoffKeywords: "insan, yetkili, temsilci, şikayet, iade",
+        optOutReply: "Tamam, sana bir daha otomatik mesaj göndermeyeceğiz. Gerekirse ekibimiz buradan yazabilir. (Bu mesaj otomatik gönderildi.)",
       };
 }
 

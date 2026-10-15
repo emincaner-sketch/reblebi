@@ -753,6 +753,25 @@ export const MIGRATIONS: Migration[] = [
       addColumn(d, "private_replies", "dm_buttons", "TEXT NOT NULL DEFAULT '[]'");
     },
   },
+  {
+    // Kişi kartı: kanal başına mesajlaşan kişinin etiketleri, alanları (seviye, e-posta) ve çıkış (opt-out) durumu
+    id: 22,
+    sql: `
+    CREATE TABLE IF NOT EXISTS contacts (
+      channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      participant_id TEXT NOT NULL,
+      org_id TEXT NOT NULL,
+      tags TEXT NOT NULL DEFAULT '[]',
+      fields TEXT NOT NULL DEFAULT '{}',
+      opted_out_at TEXT,
+      opted_out_reason TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (channel_id, participant_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_contacts_org ON contacts(org_id);
+    `,
+  },
 ];
 
 function hasColumn(d: DatabaseSync, table: string, column: string): boolean {

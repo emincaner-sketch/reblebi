@@ -231,6 +231,8 @@ export default function AutomationPage() {
         aiReplyInstructions: v.aiReplyInstructions,
         welcomeMessage: v.welcomeMessage,
         handoffKeywords: v.handoffKeywords,
+        optOutKeywords: v.optOutKeywords,
+        optOutReply: v.optOutReply,
         replyDelaySeconds: v.replyDelaySeconds,
         businessHoursEnabled: v.businessHoursEnabled,
         businessHoursStart: v.businessHoursStart,
@@ -753,6 +755,29 @@ export default function AutomationPage() {
                 />
               </div>
             )}
+
+            <div className="field">
+              <label>{t("Çıkış kelimeleri")}</label>
+              <input
+                className="input"
+                value={sv.optOutKeywords ?? ""}
+                onChange={(e) => setSettingsForm({ ...sv, optOutKeywords: e.target.value })}
+                placeholder="stop, durdur, abonelikten çık*"
+              />
+              <span className="help">{t("Bu kelimelerden birini yazan kişiye bir daha otomatik mesaj gönderilmez (kural, AI, yorumdan DM, iş akışı). İnsan cevabı gidebilir.")}</span>
+            </div>
+
+            <div className="field">
+              <label>{t("Çıkış onay mesajı")}</label>
+              <textarea
+                className="input"
+                rows={2}
+                value={sv.optOutReply ?? ""}
+                onChange={(e) => setSettingsForm({ ...sv, optOutReply: e.target.value })}
+                placeholder={t("Tamam, sana bir daha otomatik mesaj göndermeyeceğiz.")}
+              />
+              <span className="help">{t("Çıkışta bir kez gönderilir; boş bırakırsan mesaj gönderilmez.")}</span>
+            </div>
 
             <button className="btn btn-primary" onClick={() => saveSettings.mutate(sv)} disabled={saveSettings.isPending}>
               {t("Ayarları Kaydet")}

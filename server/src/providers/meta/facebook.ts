@@ -130,8 +130,8 @@ export const facebookProvider: Provider = {
     return { externalId: r.id, url: `https://www.facebook.com/${r.id}` };
   },
 
-  async sendMessage({ channel, participantId, text }) {
-    const id = await sendPageMessage(channel.externalId, channel.accessToken, participantId, text);
+  async sendMessage({ channel, participantId, text, tag }) {
+    const id = await sendPageMessage(channel.externalId, channel.accessToken, participantId, text, tag);
     return { externalId: id };
   },
 

@@ -12,9 +12,10 @@ import { postsRepo } from "../core/repos/posts.js";
 import { workflowsRepo, workflowRunsRepo } from "../core/repos/workflows.js";
 import type { Ctx, PostStatus } from "../core/types.js";
 import { aiAvailable, draftReply, generateContent } from "../ai/index.js";
-import { CommentRulePatchSchema, CommentRuleSchema, RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
+import { CommentRulePatchSchema, CommentRuleSchema, ContactPatchSchema, RecurrenceSchema, RulePatchSchema, RuleSchema, PostKindSchema, PlannerSchema } from "../api/schemas.js";
 import { requireRole } from "../services/access.js";
 import { createCommentRule, deleteCommentRule, listCommentRules, updateCommentRule } from "../services/comment-automation.js";
+import { getContact, updateContact } from "../services/contacts.js";
 import { executeWorkflow } from "../services/workflow-engine.js";
 import { analyticsOverview, dashboard } from "../services/analytics.js";
 import { listChannels } from "../services/channels.js";
@@ -627,6 +628,30 @@ export function buildMcpServer(ctx: Ctx): McpServer {
         rulesRepo.remove(ctx.orgId, a.ruleId);
         return { ok: true };
       }),
+  );
+
+  /* ----- Kişi kartı ----- */
+
+  server.registerTool(
+    "get_contact",
+    {
+      title: "Contact card · Kişi kartı",
+      description:
+        "Tags, custom fields (e.g. seviye, eposta), opt-out status and Meta messaging window of the person in a conversation. Automated DMs only go within 24h of the person's last message (windowOpenUntil); human replies can go until humanAgentUntil (7 days).",
+      inputSchema: { conversationId: z.string() },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => run(ctx, () => getContact(ctx, a.conversationId)),
+  );
+
+  server.registerTool(
+    "update_contact",
+    {
+      title: "Update contact card · Kişi kartını güncelle",
+      description: "Replaces tags and/or fields (empty field value removes it). optedOut=true stops all automated messages to this person; only set optedOut=false if the person asked to receive messages again.",
+      inputSchema: { conversationId: z.string(), ...ContactPatchSchema.shape },
+    },
+    async ({ conversationId, ...rest }) => run(ctx, () => updateContact(ctx, conversationId, ContactPatchSchema.parse(rest))),
   );
 
   /* ----- Yorumdan DM'e ----- */

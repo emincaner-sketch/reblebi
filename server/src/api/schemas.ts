@@ -116,6 +116,13 @@ const CommentRuleFields = {
   priority: z.coerce.number().int().min(0).max(10000),
 };
 
+/** Kişi kartı güncellemesi: etiketler, alanlar (ör. seviye, e-posta), çıkış listesi */
+export const ContactPatchSchema = z.object({
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  fields: z.record(z.string().max(40), z.string().max(200)).optional(),
+  optedOut: z.boolean().optional(),
+});
+
 export const CommentRuleSchema = z.object({
   ...CommentRuleFields,
   enabled: CommentRuleFields.enabled.default(0),

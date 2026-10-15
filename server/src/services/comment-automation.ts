@@ -2,6 +2,7 @@ import { AppError, notFound } from "../core/i18n.js";
 import { createLogger } from "../core/logger.js";
 import { channelsRepo } from "../core/repos/channels.js";
 import { commentRulesRepo, privateRepliesRepo, type CommentRuleInput } from "../core/repos/comment-automation.js";
+import { contactsRepo } from "../core/repos/contacts.js";
 import { inboxRepo } from "../core/repos/inbox.js";
 import { activityRepo } from "../core/repos/misc.js";
 import type { Channel, CommentRule, Conversation, Ctx, DmButton, PrivateReply } from "../core/types.js";
@@ -145,7 +146,11 @@ async function sendOne(channel: Channel, item: PrivateReply, now: Date): Promise
     privateRepliesRepo.markDone(channelId, commentId, "skipped", "kural kapatıldı ya da silindi");
     return false;
   }
-  // Konuşma insana devredildiyse (ör. "durdur" yazan kişi) otomatik mesaj gönderilmez
+  if (contactsRepo.isOptedOut(channel.id, item.commenterId)) {
+    privateRepliesRepo.markDone(channelId, commentId, "skipped", "kişi otomatik mesajları durdurdu");
+    return false;
+  }
+  // Konuşma insana devredildiyse otomatik mesaj gönderilmez
   const dmConversation = inboxRepo.findConversation(channel.id, item.commenterId);
   if (dmConversation?.mode === "manual") {
     privateRepliesRepo.markDone(channelId, commentId, "skipped", "konuşma insana devredilmiş");

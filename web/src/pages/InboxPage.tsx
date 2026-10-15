@@ -6,6 +6,7 @@ import { api, DM_PROVIDERS, errMsg, type Channel, type Conversation, type Member
 import { useI18n } from "../lib/i18n";
 import { useFmt, useSession } from "../lib/session";
 import { Avatar, Can, Empty, FeatureGate, Modal, PageHead, ProviderIcon, StatusBadge, useToast } from "../components/ui";
+import { ContactCard } from "../panel/inbox/ContactCard";
 
 type ConversationDetail = Conversation & { messages: Message[] };
 
@@ -282,6 +283,7 @@ export default function InboxPage() {
                   </div>
                 </Can>
               </div>
+              {!isReview(d) && <ContactCard key={d.id} conversationId={d.id} />}
               <div className="messages">
                 {d.messages.map((m) => (
                   <div key={m.id} className={`msg ${m.direction} ${m.status === "failed" ? "failed" : ""}`}>

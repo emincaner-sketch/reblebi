@@ -159,11 +159,16 @@ export async function waitForContainer(
   throw new ProviderError("Medya işleme zaman aşımına uğradı", undefined, undefined, true);
 }
 
+/** Send API mesaj türü: normal cevap ya da (24 saat dışında insan cevabı için) etiketli mesaj */
+export function messagingTypeParams(tag?: "HUMAN_AGENT"): Record<string, string> {
+  return tag ? { messaging_type: "MESSAGE_TAG", tag } : { messaging_type: "RESPONSE" };
+}
+
 /** Messenger / Instagram DM gönderimi (Sayfa token'ı ile) */
-export async function sendPageMessage(pageId: string, token: string, recipientId: string, text: string): Promise<string | null> {
+export async function sendPageMessage(pageId: string, token: string, recipientId: string, text: string, tag?: "HUMAN_AGENT"): Promise<string | null> {
   const r = await graph<{ message_id?: string; recipient_id?: string }>(`/${pageId}/messages`, token, {
     method: "POST",
-    params: { recipient: { id: recipientId }, message: { text }, messaging_type: "RESPONSE" },
+    params: { recipient: { id: recipientId }, message: { text }, ...messagingTypeParams(tag) },
   });
   return r.message_id ?? null;
 }
