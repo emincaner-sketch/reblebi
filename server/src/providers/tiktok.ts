@@ -1,8 +1,7 @@
-import fs from "node:fs";
 import { config } from "../core/config.js";
 import type { Channel } from "../core/types.js";
 import { pkcePair } from "../core/crypto.js";
-import { expiresIn, http, sleep } from "./http.js";
+import { expiresIn, fileBlob, http, sleep } from "./http.js";
 import { ProviderError, type Provider, type PublishInput, type PublishResult } from "./types.js";
 
 const API = "https://open.tiktokapis.com/v2";
@@ -194,8 +193,8 @@ export const tiktokProvider: Provider = {
     };
 
     if (video) {
-      const buf = fs.readFileSync(video.localPath);
-      const size = buf.length;
+      const file = await fileBlob(video.localPath, video.mime || "video/mp4");
+      const size = file.size;
       const MIN_CHUNK = 5 * 1024 * 1024;
       const CHUNK = 10 * 1024 * 1024;
       const single = size < MIN_CHUNK * 2;
@@ -212,10 +211,10 @@ export const tiktokProvider: Provider = {
       for (let i = 0; i < count; i++) {
         const start = i * chunkSize;
         const end = i === count - 1 ? size - 1 : start + chunkSize - 1;
-        const part = buf.subarray(start, end + 1);
+        const part = file.slice(start, end + 1);
         const res = await fetch(upload_url, {
           method: "PUT",
-          headers: { "Content-Type": video.mime || "video/mp4", "Content-Length": String(part.length), "Content-Range": `bytes ${start}-${end}/${size}` },
+          headers: { "Content-Type": video.mime || "video/mp4", "Content-Length": String(part.size), "Content-Range": `bytes ${start}-${end}/${size}` },
           body: part,
         });
         if (!res.ok && res.status !== 206) throw new ProviderError(`TikTok video yükleme ${res.status}`, res.status, await res.text(), res.status >= 500);

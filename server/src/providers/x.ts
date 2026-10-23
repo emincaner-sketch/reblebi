@@ -1,8 +1,7 @@
-import fs from "node:fs";
 import { config } from "../core/config.js";
 import type { Channel } from "../core/types.js";
 import { pkcePair } from "../core/crypto.js";
-import { expiresIn, http, sleep } from "./http.js";
+import { expiresIn, fileBlob, http, sleep } from "./http.js";
 import { ProviderError, type InboundEvent, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "./types.js";
 import { splitThread } from "./meta/threads.js";
 
@@ -25,18 +24,18 @@ function mediaCategory(m: PublishMedia): string {
 
 /** X v2 parçalı medya yükleme (initialize -> append -> finalize -> status) */
 async function uploadMedia(token: string, m: PublishMedia): Promise<string> {
-  const buf = fs.readFileSync(m.localPath);
+  const file = await fileBlob(m.localPath, m.mime);
   const init = await http<{ data: { id: string } }>(`${API}/media/upload/initialize`, {
     method: "POST",
     headers: bearer(token),
-    json: { media_type: m.mime, total_bytes: buf.length, media_category: mediaCategory(m) },
+    json: { media_type: m.mime, total_bytes: file.size, media_category: mediaCategory(m) },
   });
   const mediaId = init.data.id;
   const CHUNK = 4 * 1024 * 1024;
   let idx = 0;
-  for (let off = 0; off < buf.length; off += CHUNK) {
+  for (let off = 0; off < file.size; off += CHUNK) {
     const fd = new FormData();
-    fd.append("media", new Blob([buf.subarray(off, off + CHUNK)], { type: m.mime }));
+    fd.append("media", file.slice(off, off + CHUNK, m.mime));
     fd.append("segment_index", String(idx++));
     await http(`${API}/media/upload/${mediaId}/append`, { method: "POST", headers: bearer(token), multipart: fd, timeoutMs: 120_000 });
   }

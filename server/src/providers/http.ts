@@ -11,7 +11,7 @@ export interface HttpOptions {
   /** multipart/form-data gövde */
   multipart?: FormData;
   /** Ham gövde (dosya yükleme) */
-  body?: Buffer | Uint8Array | string;
+  body?: Buffer | Uint8Array | string | Blob;
   query?: Record<string, string | number | boolean | undefined | null>;
   timeoutMs?: number;
   /** 429/5xx için tekrar sayısı */
@@ -127,8 +127,9 @@ function extractError(body: unknown, status: number): string {
   return `${status}: ${String(body).slice(0, 400)}`;
 }
 
-export function fileBlob(localPath: string, mime: string): Blob {
-  return new Blob([fs.readFileSync(localPath)], { type: mime });
+/** Diskteki dosyaya bağlı Blob: içerik belleğe alınmaz, gönderilirken parça parça okunur (slice da kopyalamaz). */
+export function fileBlob(localPath: string, mime: string): Promise<Blob> {
+  return fs.openAsBlob(localPath, { type: mime });
 }
 
 export async function sleep(ms: number): Promise<void> {

@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import { config } from "../core/config.js";
 import type { Channel } from "../core/types.js";
-import { expiresIn, http } from "./http.js";
+import { expiresIn, fileBlob, http } from "./http.js";
 import { ProviderError, type AudienceBreakdown, type InboundEvent, type Provider, type PublishInput, type PublishResult } from "./types.js";
 
 /** Yorum yoklaması en fazla bu sıklıkta (YouTube Data API kotası) */
@@ -121,22 +120,34 @@ export const youtubeProvider: Provider = {
       snippet: { title, description: input.text.slice(0, 5000), tags: tags.length ? tags : undefined, categoryId: String(input.settings.categoryId || "22") },
       status: { privacyStatus: (input.settings.privacyStatus as string) || "public", selfDeclaredMadeForKids: Boolean(input.settings.madeForKids) },
     };
-    const buf = fs.readFileSync(video.localPath);
+    const file = await fileBlob(video.localPath, video.mime || "video/mp4");
     const initRes = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
       method: "POST",
       headers: {
         ...bearer(channel.accessToken),
         "Content-Type": "application/json; charset=UTF-8",
         "X-Upload-Content-Type": video.mime || "video/mp4",
-        "X-Upload-Content-Length": String(buf.length),
+        "X-Upload-Content-Length": String(file.size),
       },
       body: JSON.stringify(meta),
     });
     if (!initRes.ok) throw new ProviderError(`YouTube ${initRes.status}: ${(await initRes.text()).slice(0, 400)}`, initRes.status, undefined, initRes.status >= 500);
     const location = initRes.headers.get("location");
     if (!location) throw new ProviderError("YouTube yükleme oturumu açılamadı");
-    const up = await fetch(location, { method: "PUT", headers: { "Content-Type": video.mime || "video/mp4", "Content-Length": String(buf.length) }, body: buf });
-    if (!up.ok) throw new ProviderError(`YouTube yükleme ${up.status}: ${(await up.text()).slice(0, 400)}`, up.status, undefined, up.status >= 500);
+    // Parçalı gönderim (256 KiB katı): büyük videolar belleğe tek seferde alınmaz; ara parçalara 308 döner
+    const CHUNK = 16 * 1024 * 1024;
+    let up: Response | undefined;
+    for (let start = 0; start < file.size; start += CHUNK) {
+      const part = file.slice(start, Math.min(start + CHUNK, file.size));
+      up = await fetch(location, {
+        method: "PUT",
+        headers: { "Content-Type": video.mime || "video/mp4", "Content-Length": String(part.size), "Content-Range": `bytes ${start}-${start + part.size - 1}/${file.size}` },
+        body: part,
+      });
+      if (up.status === 308) continue;
+      if (!up.ok) throw new ProviderError(`YouTube yükleme ${up.status}: ${(await up.text()).slice(0, 400)}`, up.status, undefined, up.status >= 500);
+    }
+    if (!up?.ok) throw new ProviderError("YouTube yükleme tamamlanamadı");
     const data = (await up.json()) as { id: string };
     return { externalId: data.id, url: `https://youtu.be/${data.id}` };
   },

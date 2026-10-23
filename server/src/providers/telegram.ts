@@ -85,7 +85,7 @@ export const telegramProvider: Provider = {
       fd.append("chat_id", chatId);
       fd.append("caption", input.text.slice(0, 1024));
       fd.append("disable_notification", String(silent));
-      fd.append(m.kind === "video" ? "video" : "photo", fileBlob(m.localPath, m.mime), m.filename);
+      fd.append(m.kind === "video" ? "video" : "photo", await fileBlob(m.localPath, m.mime), m.filename);
       const r = await call<{ message_id: number }>(token, m.kind === "video" ? "sendVideo" : "sendPhoto", { multipart: fd });
       messageId = r.message_id;
     } else {
@@ -97,7 +97,7 @@ export const telegramProvider: Provider = {
         media: `attach://file${i}`,
         caption: i === 0 ? input.text.slice(0, 1024) : undefined,
       }));
-      media.forEach((m, i) => fd.append(`file${i}`, fileBlob(m.localPath, m.mime), m.filename));
+      for (const [i, m] of media.entries()) fd.append(`file${i}`, await fileBlob(m.localPath, m.mime), m.filename);
       fd.append("media", JSON.stringify(group));
       const r = await call<Array<{ message_id: number }>>(token, "sendMediaGroup", { multipart: fd });
       messageId = r[0]?.message_id;

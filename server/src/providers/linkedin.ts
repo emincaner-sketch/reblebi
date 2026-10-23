@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import { config } from "../core/config.js";
 import type { Channel } from "../core/types.js";
-import { expiresIn, http } from "./http.js";
+import { expiresIn, fileBlob, http } from "./http.js";
 import { ProviderError, type ConnectedAccount, type Provider, type PublishInput, type PublishMedia, type PublishResult } from "./types.js";
 
 const REST = "https://api.linkedin.com/rest";
@@ -32,27 +31,27 @@ async function uploadImage(token: string, owner: string, m: PublishMedia): Promi
   await http(init.value.uploadUrl, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": m.mime },
-    body: fs.readFileSync(m.localPath),
+    body: await fileBlob(m.localPath, m.mime),
     timeoutMs: 120_000,
   });
   return init.value.image;
 }
 
 async function uploadVideo(token: string, owner: string, m: PublishMedia): Promise<string> {
-  const buf = fs.readFileSync(m.localPath);
+  const file = await fileBlob(m.localPath, "application/octet-stream");
   const init = await http<{
     value: { video: string; uploadToken: string; uploadInstructions: Array<{ uploadUrl: string; firstByte: number; lastByte: number }> };
   }>(`${REST}/videos?action=initializeUpload`, {
     method: "POST",
     headers: headers(token),
-    json: { initializeUploadRequest: { owner, fileSizeBytes: buf.length, uploadCaptions: false, uploadThumbnail: false } },
+    json: { initializeUploadRequest: { owner, fileSizeBytes: file.size, uploadCaptions: false, uploadThumbnail: false } },
   });
   const etags: string[] = [];
   for (const part of init.value.uploadInstructions) {
     const res = await fetch(part.uploadUrl, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
-      body: buf.subarray(part.firstByte, part.lastByte + 1),
+      body: file.slice(part.firstByte, part.lastByte + 1),
     });
     if (!res.ok) throw new ProviderError(`LinkedIn video parçası yüklenemedi (${res.status})`, res.status, await res.text(), res.status >= 500);
     etags.push(res.headers.get("etag") ?? "");
